@@ -1,0 +1,23 @@
+[package]
+name = "dutchman-plugins"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap = { version = "4", features = ["derive", "env"] }
+sha2 = "0.11"
+directories = "6"
+base64 = "0.22"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+wasmtime = { version = "50", default-features = false, features = ["anyhow", "async", "component-model", "cranelift", "runtime", "std", "wat"] }
+wasmtime-wasi = { version = "50", default-features = false, features = ["p2"] }
+solidcraft-bridge = { path = "../../dutchman-bridge/rust" }
+sc-pilot = { path = "../../sc-pilot-wasmcore", default-features = false, features = ["core"] }
+[dev-dependencies]
+tempfile = "3"
+wat = "1"
+[lints]
+workspace = true

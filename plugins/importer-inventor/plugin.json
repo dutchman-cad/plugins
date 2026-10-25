@@ -1,0 +1,26 @@
+{
+  "id": "importer-inventor",
+  "name": "Inventor Importer",
+  "version": "0.1.0",
+  "description": "Inventor geometry importer",
+  "api": "0.1",
+  "component": "importer_inventor.wasm",
+  "world": "importer-plugin",
+  "entries": [],
+  "commands": [],
+  "permissions": {},
+  "formats": [
+    {
+      "extension": "ipt",
+      "label": "Inventor"
+    },
+    {
+      "extension": "iam",
+      "label": "Inventor"
+    }
+  ],
+  "limits": {
+    "memory_mib": 256,
+    "stack_kib": 16384
+  }
+}

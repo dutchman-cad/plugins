@@ -1,0 +1,23 @@
+{
+  "id": "pilot",
+  "name": "Pilot",
+  "version": "0.1.0",
+  "description": "Dutchman reference pilot",
+  "api": "0.1",
+  "component": "pilot.wasm",
+  "world": "command-plugin",
+  "entries": [
+    {
+      "name": "how",
+      "label": "Find a command",
+      "kind": "action"
+    },
+    {
+      "name": "plan",
+      "label": "Plan common requests",
+      "kind": "action"
+    }
+  ],
+  "commands": [],
+  "permissions": {}
+}

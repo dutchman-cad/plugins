@@ -1,0 +1,13 @@
+/target/
+examples/*/*.wasm
+examples/*.solidcraft
+__pycache__/
+.cargo/
+codex-last.md
+BRIEF-2.md
+codex-3.log
+spec-draft/
+spec-surfaces/
+BRIEF.md
+codex.log
+*.log

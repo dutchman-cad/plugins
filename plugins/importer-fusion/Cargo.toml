@@ -1,0 +1,12 @@
+[package]
+name = "dutchman-importer-fusion-plugin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+dutchman-importer-common = { path = "../importer-common" }
+cadmpeg-codec-f3d = { git = "https://github.com/cadmpeg/cadmpeg", rev = "66550bbc598eed1218706d704819d47e211cccd1" }
+[lints]
+workspace = true

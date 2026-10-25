@@ -1,0 +1,16 @@
+[package]
+name = "dutchman-importer-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+wit-bindgen.workspace = true
+serde_json.workspace = true
+dutchman-core = { path = "../../../dutchman/crates/dutchman-core" }
+cadmpeg-core = { git = "https://github.com/cadmpeg/cadmpeg", rev = "66550bbc598eed1218706d704819d47e211cccd1" }
+cadmpeg-ir = { git = "https://github.com/cadmpeg/cadmpeg", rev = "66550bbc598eed1218706d704819d47e211cccd1" }
+sha2 = "0.11"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+cadmpeg-codec-step = { git = "https://github.com/cadmpeg/cadmpeg", rev = "66550bbc598eed1218706d704819d47e211cccd1" }
+[lints]
+workspace = true

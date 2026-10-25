@@ -1,0 +1,24 @@
+{
+  "id": "hello-panel",
+  "name": "Hello-Panel",
+  "version": "0.1.0",
+  "description": "Dutchman reference hello-panel",
+  "api": "0.1",
+  "component": "hello_panel.wasm",
+  "world": "panel-plugin",
+  "entries": [
+    {
+      "name": "box",
+      "label": "Create box"
+    }
+  ],
+  "commands": [
+    "solid.box"
+  ],
+  "permissions": {
+    "store": true
+  },
+  "panel": {
+    "label": "Hello"
+  }
+}
