@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 [dependencies]
 wit-bindgen.workspace = true
 serde_json.workspace = true
-sc-pilot = { package = "dutchman-pilot", git = "https://github.com/dutchman-cad/pilot", rev = "33bd846a1c958f6b320b1e8e5d0e5917fa64c058", default-features = false, features = ["core"] }
+sc-pilot = { package = "dutchman-pilot", git = "https://github.com/dutchman-cad/pilot", rev = "6933f2c7dccbb29a53ff0a10f81147195cdb1591", default-features = false, features = ["core"] }
 
 [lints]
 workspace = true

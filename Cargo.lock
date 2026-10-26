@@ -173,8 +173,19 @@ name = "cadmpeg-asm"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "serde",
+ "serde-value",
+]
+
+[[package]]
+name = "cadmpeg-asm"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "serde",
  "serde-value",
 ]
@@ -182,10 +193,10 @@ dependencies = [
 [[package]]
 name = "cadmpeg-codec-catia"
 version = "0.6.6"
-source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
 dependencies = [
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "memchr",
  "serde",
  "serde-value",
@@ -195,10 +206,10 @@ dependencies = [
 [[package]]
 name = "cadmpeg-codec-creo"
 version = "0.6.6"
-source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
 dependencies = [
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "regex",
  "serde",
 ]
@@ -208,11 +219,32 @@ name = "cadmpeg-codec-f3d"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
- "cadmpeg-asm",
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
- "cadmpeg-protein",
+ "cadmpeg-asm 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-protein 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "lzma-rs",
+ "memchr",
+ "roxmltree",
+ "serde",
+ "serde-value",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "zip",
+]
+
+[[package]]
+name = "cadmpeg-codec-f3d"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "cadmpeg-asm 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-protein 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "lzma-rs",
  "memchr",
  "roxmltree",
@@ -229,9 +261,24 @@ name = "cadmpeg-codec-freecad"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "zip",
+]
+
+[[package]]
+name = "cadmpeg-codec-freecad"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "roxmltree",
  "serde",
  "serde_json",
@@ -242,10 +289,10 @@ dependencies = [
 [[package]]
 name = "cadmpeg-codec-iges"
 version = "0.6.6"
-source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
 dependencies = [
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "memchr",
  "serde",
  "serde_json",
@@ -258,11 +305,26 @@ name = "cadmpeg-codec-inventor"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
- "cadmpeg-asm",
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
- "cadmpeg-protein",
+ "cadmpeg-asm 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-protein 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "encoding_rs",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cadmpeg-codec-inventor"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "cadmpeg-asm 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-protein 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "encoding_rs",
  "serde",
  "serde_json",
@@ -271,12 +333,12 @@ dependencies = [
 [[package]]
 name = "cadmpeg-codec-nx"
 version = "0.6.6"
-source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
 dependencies = [
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
- "cadmpeg-parasolid",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-parasolid 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "flate2",
  "roxmltree",
  "serde",
@@ -287,11 +349,11 @@ dependencies = [
 [[package]]
 name = "cadmpeg-codec-pvz"
 version = "0.6.6"
-source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
 dependencies = [
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "crc32fast",
  "roxmltree",
 ]
@@ -299,11 +361,11 @@ dependencies = [
 [[package]]
 name = "cadmpeg-codec-rhino"
 version = "0.6.6"
-source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
 dependencies = [
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "crc32fast",
  "flate2",
  "roxmltree",
@@ -317,11 +379,11 @@ dependencies = [
 [[package]]
 name = "cadmpeg-codec-sat"
 version = "0.6.6"
-source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
 dependencies = [
- "cadmpeg-asm",
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-asm 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
 ]
 
 [[package]]
@@ -329,10 +391,28 @@ name = "cadmpeg-codec-sldprt"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
- "cadmpeg-parasolid",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-parasolid 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "crc32fast",
+ "flate2",
+ "rmp",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+]
+
+[[package]]
+name = "cadmpeg-codec-sldprt"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-parasolid 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "crc32fast",
  "flate2",
  "rmp",
@@ -348,9 +428,25 @@ version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
  "base64 0.23.1",
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "encoding_rs",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "zip",
+]
+
+[[package]]
+name = "cadmpeg-codec-step"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "base64 0.23.1",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "encoding_rs",
  "serde",
  "serde_json",
@@ -363,7 +459,18 @@ name = "cadmpeg-container"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
- "cadmpeg-core",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "crc32fast",
+ "flate2",
+ "zip",
+]
+
+[[package]]
+name = "cadmpeg-container"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "crc32fast",
  "flate2",
  "zip",
@@ -384,12 +491,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "cadmpeg-core"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "flate2",
+ "memchr",
+ "roxmltree",
+ "ruzstd",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cadmpeg-ir"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
  "base64 0.23.1",
- "cadmpeg-core",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "serde",
+ "serde-value",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror",
+]
+
+[[package]]
+name = "cadmpeg-ir"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "base64 0.23.1",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "serde",
  "serde-value",
  "serde_json",
@@ -402,7 +537,15 @@ name = "cadmpeg-parasolid"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
- "cadmpeg-core",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+]
+
+[[package]]
+name = "cadmpeg-parasolid"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
 ]
 
 [[package]]
@@ -410,9 +553,23 @@ name = "cadmpeg-protein"
 version = "0.6.6"
 source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
 dependencies = [
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "flate2",
+ "roxmltree",
+ "serde",
+ "zip",
+]
+
+[[package]]
+name = "cadmpeg-protein"
+version = "0.6.6"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
+dependencies = [
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "flate2",
  "roxmltree",
  "serde",
@@ -422,23 +579,23 @@ dependencies = [
 [[package]]
 name = "cadmpeg-registry"
 version = "0.6.6"
-source = "git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1#66550bbc598eed1218706d704819d47e211cccd1"
+source = "git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12#fb1cd0a6e53eac21088d6ca7744b131944ae4b12"
 dependencies = [
  "cadmpeg-codec-catia",
  "cadmpeg-codec-creo",
- "cadmpeg-codec-f3d",
- "cadmpeg-codec-freecad",
+ "cadmpeg-codec-f3d 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-codec-freecad 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "cadmpeg-codec-iges",
- "cadmpeg-codec-inventor",
+ "cadmpeg-codec-inventor 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "cadmpeg-codec-nx",
  "cadmpeg-codec-pvz",
  "cadmpeg-codec-rhino",
  "cadmpeg-codec-sat",
- "cadmpeg-codec-sldprt",
- "cadmpeg-codec-step",
- "cadmpeg-container",
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-codec-sldprt 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-codec-step 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-container 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "serde",
  "thiserror",
  "toml",
@@ -816,10 +973,10 @@ dependencies = [
 
 [[package]]
 name = "dutchman-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=fb1cd0a6e53eac21088d6ca7744b131944ae4b12)",
  "cadmpeg-registry",
  "roxmltree",
  "serde_json",
@@ -838,9 +995,9 @@ dependencies = [
 name = "dutchman-importer-common"
 version = "0.1.0"
 dependencies = [
- "cadmpeg-codec-step",
- "cadmpeg-core",
- "cadmpeg-ir",
+ "cadmpeg-codec-step 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-core 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
+ "cadmpeg-ir 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
  "dutchman-core",
  "serde_json",
  "sha2 0.11.1",
@@ -852,7 +1009,7 @@ dependencies = [
 name = "dutchman-importer-freecad-plugin"
 version = "0.1.0"
 dependencies = [
- "cadmpeg-codec-freecad",
+ "cadmpeg-codec-freecad 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
  "dutchman-importer-common",
 ]
 
@@ -860,7 +1017,7 @@ dependencies = [
 name = "dutchman-importer-fusion-plugin"
 version = "0.1.0"
 dependencies = [
- "cadmpeg-codec-f3d",
+ "cadmpeg-codec-f3d 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
  "dutchman-importer-common",
 ]
 
@@ -868,7 +1025,7 @@ dependencies = [
 name = "dutchman-importer-inventor-plugin"
 version = "0.1.0"
 dependencies = [
- "cadmpeg-codec-inventor",
+ "cadmpeg-codec-inventor 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
  "dutchman-importer-common",
 ]
 
@@ -876,14 +1033,14 @@ dependencies = [
 name = "dutchman-importer-solidworks-plugin"
 version = "0.1.0"
 dependencies = [
- "cadmpeg-codec-sldprt",
+ "cadmpeg-codec-sldprt 0.6.6 (git+https://github.com/cadmpeg/cadmpeg?rev=66550bbc598eed1218706d704819d47e211cccd1)",
  "dutchman-importer-common",
 ]
 
 [[package]]
 name = "dutchman-pilot"
-version = "0.1.0-beta.4"
-source = "git+https://github.com/dutchman-cad/pilot?rev=33bd846a1c958f6b320b1e8e5d0e5917fa64c058#33bd846a1c958f6b320b1e8e5d0e5917fa64c058"
+version = "0.1.0-beta.5"
+source = "git+https://github.com/dutchman-cad/pilot?rev=6933f2c7dccbb29a53ff0a10f81147195cdb1591#6933f2c7dccbb29a53ff0a10f81147195cdb1591"
 dependencies = [
  "serde",
  "serde_json",
