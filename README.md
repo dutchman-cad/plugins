@@ -29,7 +29,7 @@ unclear and what this host chose.
 
 Requires sibling checkouts of [dutchman-bridge](https://github.com/dutchman-cad/bridge) and
 [dutchman](https://github.com/dutchman-cad/dutchman). Pilot's portable core comes from
-[dutchman-cad/pilot](https://github.com/dutchman-cad/pilot) at 33bd846. Rust must support Wasmtime 50
+[dutchman-cad/pilot](https://github.com/dutchman-cad/pilot) at 6933f2c. Rust must support Wasmtime 50
 and have the wasm32-wasip2 target installed.
 
 Build with at most six jobs, at reduced priority:
