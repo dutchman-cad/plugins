@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["host", "plugins/pilot", "plugins/importer-common", "plugins/importer-fusion", "plugins/importer-inventor", "plugins/importer-solidworks", "plugins/importer-freecad", "plugins/hello-panel"]
+members = ["host", "plugins/pilot", "plugins/importer-common", "plugins/importer-fusion", "plugins/importer-inventor", "plugins/importer-solidworks", "plugins/importer-freecad", "plugins/hello-panel", "plugins/print"]
 default-members = ["host"]
 [workspace.package]
 version = "0.1.0"

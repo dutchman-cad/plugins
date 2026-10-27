@@ -5,6 +5,8 @@ pub const MIB: usize = 1024 * 1024;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
+    #[serde(default)]
+    pub surfaces: Vec<Surface>,
     pub id: String,
     pub name: String,
     pub version: String,
@@ -27,11 +29,31 @@ pub struct Manifest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
+    #[serde(default = "edit")]
+    pub effect: String,
+    pub machine_kind: Option<String>,
+    pub confirm: Option<Confirmation>,
     pub name: String,
     pub label: String,
     #[serde(default = "transaction")]
     pub kind: String,
     pub params: Option<String>,
+}
+fn edit() -> String {
+    "edit".into()
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Confirmation {
+    pub machine: String,
+    pub action: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Surface {
+    pub kind: String,
+    pub label: Option<String>,
+    pub entry: Option<String>,
 }
 fn transaction() -> String {
     "transaction".into()
@@ -51,11 +73,31 @@ pub struct Format {
 #[serde(deny_unknown_fields)]
 pub struct Permissions {
     #[serde(default)]
+    pub local: Vec<LocalService>,
+    #[serde(default)]
     pub store: bool,
     #[serde(default)]
     pub clock: bool,
     #[serde(default)]
     pub net: Vec<serde_json::Value>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalService {
+    pub name: String,
+    pub port: u16,
+    #[serde(default)]
+    pub mesh: bool,
+    pub secret: Option<Secret>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Secret {
+    pub name: String,
+    pub label: String,
+    pub header: String,
+    #[serde(default)]
+    pub prefix: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -146,6 +188,33 @@ impl Manifest {
                 e.kind == "transaction" || e.kind == "action",
                 "Invalid entry kind"
             );
+            ensure!(
+                ["read", "edit", "physical"].contains(&e.effect.as_str()),
+                "Invalid entry effect"
+            );
+            ensure!(
+                e.kind == "action" || e.effect == "edit",
+                "Only actions may be read or physical"
+            );
+            if e.effect == "physical" {
+                ensure!(
+                    e.machine_kind.as_ref().is_some_and(|s| text(s, 40)),
+                    "Physical action needs machine_kind"
+                );
+                let c = e
+                    .confirm
+                    .as_ref()
+                    .context("Physical action needs confirm")?;
+                ensure!(
+                    text(&c.machine, 80) && text(&c.action, 80),
+                    "Invalid confirmation"
+                );
+            } else {
+                ensure!(
+                    e.machine_kind.is_none() && e.confirm.is_none(),
+                    "Confirmation only on physical actions"
+                );
+            }
             if let Some(p) = &e.params {
                 ensure!(
                     p.len() <= 1024 && !p.chars().any(char::is_control),
@@ -153,6 +222,65 @@ impl Manifest {
                 );
             }
         }
+        ensure!(self.surfaces.len() <= 8, "Too many surfaces");
+        let mut kinds = BTreeSet::new();
+        for surface in &self.surfaces {
+            if let Some(label) = &surface.label {
+                ensure!(text(label, 40), "Invalid surface label");
+            }
+            match surface.kind.as_str() {
+                "toolbar-entry" => {
+                    ensure!(world != "importer-plugin", "Importer toolbar entry");
+                    let entry = self
+                        .entries
+                        .iter()
+                        .find(|e| Some(&e.name) == surface.entry.as_ref())
+                        .context("Unknown surface entry")?;
+                    ensure!(entry.params.is_none(), "Toolbar entry requires parameters");
+                }
+                "panel" | "toolbar-widget" => {
+                    ensure!(
+                        world == "panel-plugin" && surface.entry.is_none(),
+                        "Panel surface needs panel world"
+                    );
+                }
+                "open-source" | "import-menu" => ensure!(
+                    world == "importer-plugin" && surface.entry.is_none(),
+                    "Importer surface needs importer world"
+                ),
+                _ => bail!("Unknown surface kind"),
+            }
+            ensure!(
+                kinds.insert((&surface.kind, &surface.entry)),
+                "Duplicate surface"
+            );
+        }
+        ensure!(self.permissions.local.len() <= 2, "Too many local services");
+        let mut services = BTreeSet::new();
+        for service in &self.permissions.local {
+            ensure!(
+                slug(&service.name, 32)
+                    && !service.name.contains('_')
+                    && service.port != 0
+                    && services.insert(&service.name),
+                "Invalid local service"
+            );
+            if let Some(secret) = &service.secret {
+                ensure!(
+                    slug(&secret.name, 32)
+                        && text(&secret.label, 40)
+                        && ["Authorization", "X-Api-Key", "Private-Token"]
+                            .contains(&secret.header.as_str())
+                        && secret.prefix.len() <= 16
+                        && !secret.prefix.chars().any(char::is_control),
+                    "Invalid local secret"
+                );
+            }
+        }
+        ensure!(
+            self.permissions.local.is_empty() || world == "panel-plugin",
+            "Local services require panel world"
+        );
         let l = &self.limits;
         ensure!(
             (16..=256).contains(&l.memory_mib)
@@ -207,4 +335,22 @@ impl Manifest {
         }
         Ok(())
     }
+}
+
+/// Approval covers capabilities; user addresses and component bytes are separate.
+pub fn approval(manifest: &Manifest) -> String {
+    let capabilities = serde_json::json!({
+        "commands": manifest.commands, "permissions": manifest.permissions,
+        "limits": manifest.limits, "world": manifest.world,
+        "formats": manifest.formats, "reads_input_folder": manifest.reads_input_folder,
+        "entries": manifest.entries.iter().map(|e| serde_json::json!({
+            "name":e.name,"kind":e.kind,"effect":e.effect,"machine_kind":e.machine_kind,"confirm":e.confirm
+        })).collect::<Vec<_>>(),
+        "surfaces": manifest.surfaces.iter().map(|s| serde_json::json!({"kind":s.kind,"entry":s.entry})).collect::<Vec<_>>()
+    }).to_string();
+    use sha2::{Digest, Sha256};
+    Sha256::digest(capabilities.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }

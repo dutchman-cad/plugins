@@ -1,0 +1,111 @@
+{
+  "id": "print",
+  "name": "Dutchman Print",
+  "version": "0.1.0",
+  "description": "Prepare selected bodies and control printers through a local Print API v1 companion.",
+  "api": "0.1",
+  "component": "print.wasm",
+  "world": "panel-plugin",
+  "panel": {
+    "label": "Print"
+  },
+  "permissions": {
+    "store": true,
+    "local": [
+      {
+        "name": "dutchman-print",
+        "port": 8730,
+        "mesh": true
+      }
+    ]
+  },
+  "entries": [
+    {
+      "name": "slice",
+      "label": "Slice",
+      "kind": "action",
+      "effect": "read"
+    },
+    {
+      "name": "print",
+      "label": "Start printing",
+      "kind": "action",
+      "effect": "physical",
+      "machine_kind": "printer",
+      "confirm": {
+        "machine": "printer",
+        "action": "Start printing"
+      },
+      "params": "printer: id, job: id"
+    },
+    {
+      "name": "cancel",
+      "label": "Cancel printing",
+      "kind": "action",
+      "effect": "physical",
+      "machine_kind": "printer",
+      "confirm": {
+        "machine": "printer",
+        "action": "Cancel printing"
+      },
+      "params": "printer: id, job: id"
+    },
+    {
+      "name": "pause",
+      "label": "Pause printing",
+      "kind": "action",
+      "effect": "physical",
+      "machine_kind": "printer",
+      "confirm": {
+        "machine": "printer",
+        "action": "Pause printing"
+      },
+      "params": "printer: id"
+    },
+    {
+      "name": "resume",
+      "label": "Resume printing",
+      "kind": "action",
+      "effect": "physical",
+      "machine_kind": "printer",
+      "confirm": {
+        "machine": "printer",
+        "action": "Resume printing"
+      },
+      "params": "printer: id"
+    },
+    {
+      "name": "clear",
+      "label": "Bed is clear",
+      "kind": "action",
+      "effect": "physical",
+      "machine_kind": "printer",
+      "confirm": {
+        "machine": "printer",
+        "action": "Bed is clear"
+      },
+      "params": "printer: id"
+    },
+    {
+      "name": "status",
+      "label": "Status",
+      "kind": "action",
+      "effect": "read"
+    }
+  ],
+  "surfaces": [
+    {
+      "kind": "toolbar-entry",
+      "label": "Print selected bodies",
+      "entry": "slice"
+    },
+    {
+      "kind": "panel",
+      "label": "Print"
+    },
+    {
+      "kind": "toolbar-widget",
+      "label": "Printers"
+    }
+  ]
+}

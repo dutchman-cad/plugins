@@ -211,3 +211,46 @@ fn unknown_command_and_importer_folder_access_refused() {
             .is_err()
     );
 }
+
+#[test]
+fn t33_t35_physical_local_widget_approval() {
+    let original: serde_json::Value =
+        serde_json::from_str(include_str!("../../examples/print/plugin.json")).unwrap();
+    let m: Manifest = serde_json::from_value(original.clone()).unwrap();
+    m.validate().unwrap();
+    let fingerprint = dutchman_plugins::manifest::approval(&m);
+    for (pointer, value) in [
+        ("/permissions/local/0/mesh", json!(false)),
+        ("/permissions/local/0/port", json!(8731)),
+        ("/entries/1/confirm/action", json!("Start machine")),
+        ("/surfaces/2/kind", json!("panel")),
+    ] {
+        let mut v = original.clone();
+        *v.pointer_mut(pointer).unwrap() = value;
+        assert_ne!(
+            fingerprint,
+            dutchman_plugins::manifest::approval(&serde_json::from_value::<Manifest>(v).unwrap())
+        );
+    }
+    let mut changed = m.clone();
+    changed.version = "0.2.0".into();
+    changed.component = Some("new.wasm".into());
+    assert_eq!(fingerprint, dutchman_plugins::manifest::approval(&changed));
+    for pointer in ["/entries/1/confirm", "/entries/1/machine_kind"] {
+        let mut v = original.clone();
+        *v.pointer_mut(pointer).unwrap() = json!(null);
+        assert!(
+            serde_json::from_value::<Manifest>(v)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+    }
+    let mut changed = m.clone();
+    changed.surfaces.push(changed.surfaces[2].clone());
+    assert!(changed.validate().is_err());
+    let mut changed = m;
+    changed.world = Some("command-plugin".into());
+    changed.panel = None;
+    assert!(changed.validate().is_err());
+}
