@@ -25,9 +25,9 @@ Panel components:
 | Panel | Bytes | MiB |
 | --- | ---: | ---: |
 | Hello panel | 175,846 | 0.17 |
-| Print | 203,578 | 0.19 |
+| Print | 203,981 | 0.19 |
 
-All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (22),
+All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (23),
 and host/guest lint checks pass. Earlier live checks, against the official SolidCraft 0.22.1 Linux
 release: the Fusion importer converts a synthetic cube and SolidCraft opens it, Pilot
 answers "round all edges 3 mm" with the fillet command, and the hello panel's button
@@ -141,7 +141,10 @@ companion, such as [Dutchman Print](https://github.com/dutchman-cad/dutchman/blo
 The panel offers printer choice, optional profile overrides, slicing estimates,
 Print, Pause, Resume, Cancel and Bed is clear. Printer rows show state, progress
 and time remaining. The toolbar widget uses the panel's status item. It refreshes
-every 5 seconds while a printer is busy and every 30 seconds otherwise.
+every 5 seconds while a printer has a live job and every 30 seconds otherwise.
+A printer in `attention` (waiting for a person) or `busy` (a non-print operation is
+running) shows the companion's reason under its row. Attention also marks the widget.
+Only Cancel is offered for a job in attention; Pause, Resume and Print stay disabled.
 
 Set the companion address in this host's command line. It never comes from the
 plugin. Until set, the host returns a named setup error. Only loopback, private,
