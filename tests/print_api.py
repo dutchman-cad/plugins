@@ -46,7 +46,9 @@ class PrintSmoke(unittest.TestCase):
         self.challenge_seconds = 60
         self.state = "idle"
         self.needs_clearing = True
+        self.controls = ["start", "pause", "resume", "cancel", "stop", "clear"]
         self.error = None
+        self.extra_printers = []
         case = self
 
         class API(http.server.BaseHTTPRequestHandler):
@@ -76,7 +78,8 @@ class PrintSmoke(unittest.TestCase):
                                              "state": case.state, "progress": case.progress,
                                              "seconds_left": 90, "needs_clearing": case.needs_clearing,
                                              "job_id": case.live_job_id, "job_name": case.live_job_name,
-                                             "detail": case.detail}])
+                                             "detail": case.detail,
+                                             **({"controls": case.controls} if case.controls is not None else {})}] + case.extra_printers)
                 self.reply(404, {"error": "Job expired."})
 
             def do_POST(self):
@@ -110,6 +113,8 @@ class PrintSmoke(unittest.TestCase):
                         return self.reply(400, {"error": "Invalid job binding."})
                     if action in ("start", "cancel") and job != "job/one":
                         return self.reply(404, {"error": "Job not found."})
+                    if case.controls is not None and action not in case.controls:
+                        return self.reply(409, {"error": "Action not configured for printer."})
                     compatible = {"start": case.state == "idle" and not case.needs_clearing and case.job_state == "ready",
                                   "clear": case.state == "idle", "pause": case.state == "printing",
                                   "resume": case.state == "paused", "cancel": case.job_state in ("ready", "printing", "paused"),
@@ -126,6 +131,8 @@ class PrintSmoke(unittest.TestCase):
                 action = path.rsplit("/", 1)[-1]
                 printer = "bench" if path.startswith("/api/v1/jobs/") else unquote(path.split("/")[-2])
                 job = unquote(path.split("/")[-2]) if action in ("start", "cancel") else None
+                if case.controls is not None and action not in case.controls:
+                    return self.reply(409, {"error": "Action not configured for printer."})
                 values = self.headers.get_all("Plugin-Confirmation", [])
                 challenge_id = data.get("confirmation") or parse_qs(urlsplit(self.path).query).get("confirmation", [None])[0]
                 if len(values) != 1 or not re.fullmatch("[0-9a-f]{64}", values[0]) or not isinstance(challenge_id, str) or not challenge_id:
@@ -160,7 +167,8 @@ class PrintSmoke(unittest.TestCase):
                     case.state = "idle"
                     case.job_state = "cancelled"
                     return self.reply(200, {"id": "bench", "name": "Workbench", "model": "Fake", "state": "idle",
-                                            "needs_clearing": True, "echo": values[0]})
+                                            "needs_clearing": True, "echo": values[0],
+                                            **({"controls": case.controls} if case.controls is not None else {})})
                 else:
                     return self.reply(404, {"error": "Unknown route."})
                 case.job_state = "cancelled" if action == "cancel" else case.state
@@ -377,6 +385,87 @@ class PrintSmoke(unittest.TestCase):
         self.assertIn(challenge["summary"], run.stdout)
         self.assertFalse(any(r[2].endswith("/cancel") for r in self.requests))
         self.assertEqual(self.state, "idle")
+
+    def panel_buttons(self, output):
+        return dict(re.findall(r'Button \{\s*id: "([^"]+)",\s*label: "[^"]+",\s*enabled: (true|false)', output))
+
+    def reviewed_actions(self):
+        return [json.loads(r[4])["action"] for r in self.requests if r[2] == "/api/v1/confirmations"]
+
+    def test_monitoring_only_has_no_machine_buttons_or_challenges(self):
+        self.controls = []
+        for state in ("idle", "printing", "paused", "attention"):
+            with self.subTest(state=state):
+                self.state = state
+                run = self.run_host("panel", "print", input='{"id":"slice"}\nquit\n')
+                self.assertEqual(self.panel_buttons(run.stdout), {"slice": "true"})
+                self.assertEqual(run.stdout.count("This printer is monitoring only."), 2)
+        self.assertEqual(self.reviewed_actions(), [])
+        self.run_host("run", "print", "review", '{"action":"clear","printer":"bench"}', ok=False)
+        self.assertEqual(self.reviewed_actions(), [])
+
+    def test_controls_follow_the_selected_printer(self):
+        self.extra_printers = [{"id": "monitor", "name": "Monitor", "state": "printing", "controls": []}]
+        run = self.run_host("panel", "print", input='{"id":"status","inputs":{"printer":1}}\nquit\n')
+        before, after = run.stdout.split("Print selected bodies")[1:]
+        self.assertIn("clear", self.panel_buttons(before))
+        self.assertEqual(self.panel_buttons(after), {"slice": "true"})
+        self.assertIn("This printer is monitoring only.", after)
+        self.assertEqual(self.reviewed_actions(), ["clear"])
+        self.assertTrue(all(c["printer"] == "bench" for c in self.challenges.values()))
+
+    def test_stop_only_offers_only_stop(self):
+        self.controls = ["stop"]
+        for state in ("idle", "printing", "paused", "attention"):
+            with self.subTest(state=state):
+                self.state = state
+                run = self.run_host("panel", "print", input='{"id":"slice"}\nquit\n')
+                self.assertEqual(self.panel_buttons(run.stdout),
+                                 {"slice": "true", "stop": "false" if state == "idle" else "true"})
+                self.assertNotIn("monitoring only", run.stdout)
+        self.assertTrue(self.reviewed_actions())
+        self.assertEqual(set(self.reviewed_actions()), {"stop"})
+
+    def test_repetier_controls_hide_pause_resume_and_stop(self):
+        self.controls = ["start", "cancel", "clear"]
+        for state in ("idle", "printing", "paused", "attention"):
+            with self.subTest(state=state):
+                self.state = state
+                run = self.run_host("panel", "print", input='{"id":"slice"}\nquit\n')
+                buttons = self.panel_buttons(run.stdout)
+                self.assertEqual(set(buttons), {"slice", "print", "cancel", "clear"})
+                self.assertEqual(buttons["print"], "false")  # The bed still needs clearing.
+                self.assertEqual(buttons["cancel"], "true" if state == "idle" else "false")
+                self.assertEqual(buttons["clear"], "true" if state == "idle" else "false")
+        self.assertTrue(set(self.reviewed_actions()) <= {"start", "cancel", "clear"})
+        self.state = "idle"
+        self.needs_clearing = False
+        run = self.run_host("panel", "print", input="quit\n")
+        self.assertEqual(self.panel_buttons(run.stdout)["print"], "true")
+        self.assertNotIn("clear", self.panel_buttons(run.stdout))
+        self.assertIn("start", self.reviewed_actions())
+
+    def test_absent_controls_preserves_buttons_and_enable_rules(self):
+        self.controls = None
+        for state in ("idle", "printing", "paused", "attention"):
+            with self.subTest(state=state):
+                self.state = state
+                run = self.run_host("panel", "print", input='{"id":"slice"}\nquit\n')
+                self.assertEqual(self.panel_buttons(run.stdout), {
+                    "slice": "true", "print": "false",
+                    "pause": "true" if state == "printing" else "false",
+                    "resume": "true" if state == "paused" else "false",
+                    "stop": "false" if state == "idle" else "true",
+                    "cancel": "true" if state == "idle" else "false",
+                    "clear": "true" if state == "idle" else "false"})
+                self.assertNotIn("monitoring only", run.stdout)
+        self.assertEqual(set(self.reviewed_actions()), {"pause", "resume", "stop", "cancel", "clear"})
+        self.state = "idle"
+        self.needs_clearing = False
+        run = self.run_host("panel", "print", input="quit\n")
+        self.assertEqual(self.panel_buttons(run.stdout)["print"], "true")
+        self.assertNotIn("clear", self.panel_buttons(run.stdout))
+        self.assertIn("start", self.reviewed_actions())
 
     def test_profile_overrides_are_encoded(self):
         self.run_host("run", "print", "slice", '{"printer":"bench","print_profile":"Fine & slow","filament_profile":"PLA+"}')
