@@ -7,10 +7,10 @@ license.workspace = true
 wit-bindgen.workspace = true
 serde_json.workspace = true
 dutchman-core = { path = "../../../dutchman/crates/dutchman-core" }
-cadmpeg-core = { git = "https://github.com/cadmpeg/cadmpeg", rev = "66550bbc598eed1218706d704819d47e211cccd1" }
-cadmpeg-ir = { git = "https://github.com/cadmpeg/cadmpeg", rev = "66550bbc598eed1218706d704819d47e211cccd1" }
+cadmpeg-core = { git = "https://github.com/cadmpeg/cadmpeg", rev = "fb1cd0a6e53eac21088d6ca7744b131944ae4b12" }
+cadmpeg-ir = { git = "https://github.com/cadmpeg/cadmpeg", rev = "fb1cd0a6e53eac21088d6ca7744b131944ae4b12" }
 sha2 = "0.11"
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
-cadmpeg-codec-step = { git = "https://github.com/cadmpeg/cadmpeg", rev = "66550bbc598eed1218706d704819d47e211cccd1" }
+cadmpeg-codec-step = { git = "https://github.com/cadmpeg/cadmpeg", rev = "fb1cd0a6e53eac21088d6ca7744b131944ae4b12" }
 [lints]
 workspace = true

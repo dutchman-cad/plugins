@@ -7,6 +7,6 @@ license.workspace = true
 crate-type = ["cdylib"]
 [dependencies]
 dutchman-importer-common = { path = "../importer-common" }
-cadmpeg-codec-f3d = { git = "https://github.com/cadmpeg/cadmpeg", rev = "66550bbc598eed1218706d704819d47e211cccd1" }
+cadmpeg-codec-f3d = { git = "https://github.com/cadmpeg/cadmpeg", rev = "fb1cd0a6e53eac21088d6ca7744b131944ae4b12" }
 [lints]
 workspace = true
