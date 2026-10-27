@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BRIDGE_REV: 45c970bf5f3a702f4aa25a643407424b3fdf268e
+  DUTCHMAN_REV: 0df4d2ee9758c6eaf430720a8b5ebc1b963d313c
+  CARGO_TARGET_DIR: ${{ github.workspace }}/plugins/target
+  TMPDIR: ${{ github.workspace }}/plugins/.build-tmp
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [fmt, clippy, test, components]
+    defaults:
+      run:
+        working-directory: plugins
+    steps:
+      - name: Checkout plugins
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: plugins
+          persist-credentials: false
+      - name: Checkout Bridge
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: dutchman-cad/bridge
+          ref: ${{ env.BRIDGE_REV }}
+          path: dutchman-bridge
+          persist-credentials: false
+      - name: Checkout Dutchman
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: dutchman-cad/dutchman
+          ref: ${{ env.DUTCHMAN_REV }}
+          path: dutchman
+          persist-credentials: false
+      - name: Create scratch directory
+        run: mkdir -p "$TMPDIR"
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@bc2d2e71bd35c5549942babaa51a89c586b981d1 # v2.8.1
+        with:
+          workspaces: plugins -> target
+          key: ${{ matrix.check }}-${{ env.BRIDGE_REV }}-${{ env.DUTCHMAN_REV }}
+      - name: Check formatting
+        if: matrix.check == 'fmt'
+        run: cargo fmt --all --check
+      - name: Lint host and plugins
+        if: matrix.check == 'clippy'
+        run: |
+          cargo clippy --locked --release --all-targets -- -D warnings
+          for plugin in pilot hello-panel print importer-fusion importer-inventor importer-solidworks importer-freecad; do
+            cargo clippy --locked --release --target wasm32-wasip2 -p "dutchman-$plugin-plugin" -- -D warnings
+          done
+          cargo clippy --locked --release --target wasm32-wasip2 -p dutchman-importer-common -- -D warnings
+      - name: Test host
+        if: matrix.check == 'test'
+        run: cargo test --locked --release
+      - name: Build components and enforce the 16 MiB cap
+        if: matrix.check == 'components'
+        run: ./scripts/build-plugins.sh
+      - name: Build smoke test host
+        if: matrix.check == 'components'
+        run: cargo build --locked --release
+      - name: Run offline smoke tests
+        if: matrix.check == 'components'
+        run: python3 tests/smoke.py

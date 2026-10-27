@@ -36,8 +36,18 @@ unclear and what this host chose.
 
 Requires sibling checkouts of [dutchman-bridge](https://github.com/dutchman-cad/bridge) and
 [dutchman](https://github.com/dutchman-cad/dutchman). Pilot's portable core comes from
-[dutchman-cad/pilot](https://github.com/dutchman-cad/pilot) at 6933f2c. Rust must support Wasmtime 50
+[dutchman-cad/pilot](https://github.com/dutchman-cad/pilot) at
+`6933f2c7dccbb29a53ff0a10f81147195cdb1591` (v0.1.0-beta.5), for both the host and Pilot plugin. Rust must support Wasmtime 50
 and have the wasm32-wasip2 target installed.
+
+## Sibling revisions
+
+CI pins the sibling checkouts in `.github/workflows/ci.yml`, under the workflow
+`env:` keys `BRIDGE_REV` and `DUTCHMAN_REV`. To move either revision, update its
+commit SHA and run CI. The checkout directories are `../dutchman-bridge` and
+`../dutchman`, beside this repository.
+
+## Building and testing
 
 Build through the `plugins` build queue. It selects the target directory and
 limits the job count. Set a writable scratch directory for temporary files:
@@ -59,6 +69,10 @@ copies them beside their example manifests. The WIT includes the proposed physic
 status widgets and timed refresh additions, including
 its unstable file-formats annotations; guest bindings enable that WIT feature.
 Host and plugins share no private interfaces.
+
+In CI, or when `buildq` is unavailable, the build script uses plain Cargo and
+reads components from `CARGO_TARGET_DIR` (default `./target`), with Cargo's default
+job count. Local queued builds continue to use three jobs.
 
 Use the default ~/.cargo cache; do not create a second CARGO_HOME.
 The build queue sets the target directory and a conservative job count.

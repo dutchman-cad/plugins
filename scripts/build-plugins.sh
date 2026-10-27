@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-target_dir="$(python3 - <<'PYTARGET'
+if [[ ! -v CI ]] && command -v buildq >/dev/null 2>&1; then
+  use_buildq=true
+  target_dir="$(python3 - <<'PYTARGET'
 import hashlib
 from pathlib import Path
 root = Path.cwd().resolve()
 print(Path.home() / ".cache/buildq/target/plugins" / f"{root.name}-{hashlib.sha1(str(root).encode()).hexdigest()[:8]}")
 PYTARGET
 )"
+else
+  use_buildq=false
+  target_dir="${CARGO_TARGET_DIR:-$PWD/target}"
+fi
 plugins=(pilot hello-panel print importer-fusion importer-inventor importer-solidworks importer-freecad)
 # Each cdylib has its own decoder dependency; the shared adapter uses static dispatch.
 packages=()
@@ -16,7 +22,11 @@ for plugin in "${plugins[@]}"; do
 done
 scratch_dir="${TMPDIR:-$PWD/.build-tmp}"
 mkdir -p "$scratch_dir"
-buildq run plugins "$PWD" -- cargo --config "env.TMPDIR=\"$scratch_dir\"" build --release --target wasm32-wasip2 -j 3 "${packages[@]}"
+if "$use_buildq"; then
+  buildq run plugins "$PWD" -- cargo --config "env.TMPDIR=\"$scratch_dir\"" build --release --target wasm32-wasip2 -j 3 "${packages[@]}"
+else
+  cargo --config "env.TMPDIR=\"$scratch_dir\"" build --release --target wasm32-wasip2 "${packages[@]}"
+fi
 # Validate every result before replacing any installed example component.
 python3 - "$target_dir" <<'PY'
 import sys
