@@ -112,6 +112,16 @@ fn review(entry: &str, params: &Value) -> Result<Value, E> {
         return Err(invalid("Unknown confirmation action"));
     }
     let printer = selected(params)?;
+    if load("printers").is_null() {
+        printers()?;
+    }
+    let fleet = load("printers");
+    let current = fleet
+        .as_array()
+        .and_then(|a| a.iter().find(|p| p["id"] == printer));
+    if !supports(current.unwrap_or(&Value::Null), entry) {
+        return Err(invalid("Printer does not support this action."));
+    }
     let mut request =
         json!({"action": if entry == "print" { "start" } else { entry }, "printer": printer});
     if ["print", "cancel"].contains(&entry) {
@@ -296,7 +306,23 @@ fn challenge_matches(challenge: &Value, params: &Value) -> bool {
         && challenge["printer"] == params["printer"]
         && challenge["job"] == params["job"]
 }
+fn supports(printer: &Value, entry: &str) -> bool {
+    let action = if entry == "print" { "start" } else { entry };
+    printer.get("controls").is_none_or(|controls| {
+        controls
+            .as_array()
+            .is_some_and(|actions| actions.iter().any(|a| a == action))
+    })
+}
 fn reviewed_button(items: &mut Vec<panel::Item>, entry: &str, label: &str, enabled: bool) {
+    let fleet = load("printers");
+    let selected = load("printer");
+    let current = fleet
+        .as_array()
+        .and_then(|a| a.iter().find(|p| p["id"] == selected));
+    if !supports(current.unwrap_or(&Value::Null), entry) {
+        return;
+    }
     if enabled {
         let params = action_params(entry);
         let mut challenge = load(&format!("challenge_{entry}"));
@@ -340,6 +366,14 @@ impl panel::Guest for Print {
                 if ["print", "cancel", "pause", "resume", "clear", "stop"]
                     .contains(&action.id.as_str())
                 {
+                    let fleet = load("printers");
+                    let selected = load("printer");
+                    let current = fleet
+                        .as_array()
+                        .and_then(|a| a.iter().find(|p| p["id"] == selected));
+                    if !supports(current.unwrap_or(&Value::Null), &action.id) {
+                        return Err(invalid("Printer does not support this action."));
+                    }
                     let params = action_params(&action.id);
                     let challenge = load(&format!("challenge_{}", action.id));
                     if !challenge_matches(&challenge, &params) {
@@ -490,6 +524,9 @@ impl panel::Guest for Print {
                 && current.is_some_and(|p| p["state"] == "idle" && p["needs_clearing"] != true),
         );
         if let Some(p) = current {
+            if p["controls"].as_array().is_some_and(Vec::is_empty) {
+                items.push(text("This printer is monitoring only.".into()));
+            }
             reviewed_button(&mut items, "pause", "Pause", p["state"] == "printing");
             reviewed_button(&mut items, "resume", "Resume", p["state"] == "paused");
             // Stop ends whatever job is live, including one started outside Print.
