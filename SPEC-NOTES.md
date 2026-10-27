@@ -17,12 +17,12 @@ Each entry records the section, question, and this reference host's choice.
    finish after the guest deadline, as the control protocol documents.
    Compilation also uses a detached worker, so its 60-second timeout does not
    leave the CLI waiting for Tokio's blocking pool to finish the compile.
-2. **6.1 — Approval hashes conflict with the requested reference-host behavior.**
-   The draft hashes permissions and explicitly allows code-only updates without
-   renewed approval; this reference host keys approval to component hashes. We require both the
-   SHA-256 component hash and the complete validated manifest to remain identical.
-   --yes explicitly authorizes the current version. check typechecks without running
-   guest code; explicit check permits compilation without granting runtime approval.
+2. **6.1 — Approval fingerprints.**
+   Approval hashes the validated capabilities: commands, permissions, limits,
+   world, entries and confirmations, surfaces, importer formats and folder access.
+   Code-only updates keep approval. User addresses are separate process settings.
+   The component SHA-256 is displayed for inspection. check typechecks without
+   running guest code or granting runtime approval.
 3. **9a / Dutchman adapter — How can a filesystem-oriented decoder use streams?**
    Dutchman's public read entry point takes a native path. We copied only its private
    byte decoder locally and removed filesystem detection; conversion receives the WIT
@@ -130,3 +130,80 @@ Each entry records the section, question, and this reference host's choice.
     attempting to open it. In this session, live open and panel checks are blocked
     by connection refusal at the discovered stock control endpoint; no SolidCraft
     executable is on PATH. This is separate from component size and conversion.
+
+16. **6.4a — Physical actions in a standalone terminal.**
+    Every physical entry asks on the host terminal before instantiation, including
+    entries queued by request-execute. Approval never accepts a machine action.
+    Headless calls are denied. The test switch additionally requires
+    DUTCHMAN_PLUGINS_TEST=1 and 127.0.0.1 service origins. The prompt names the
+    plugin, machine kind, fixed machine and action, and exact frozen JSON params.
+    Calls are serialized by the text event loop; settings are immutable during
+    a call. A 32-byte OS-random, lowercase hexadecimal token lives only in that
+    call's State, expires after 60 seconds, and attaches only to local requests.
+    Binding follows that State's plugin, entry and frozen params; there is no
+    separate token registry or replay interface. The companion consumes tokens
+    once, including failed actions. Header injection is refused case-insensitively.
+    Exact echoes in response names, values and bytes are redacted before lifting.
+    A changed approval record or selection-file size or modification time cancels
+    the pending prompt. This host has no live design-change subscription or mutable
+    settings UI; cancellation on external application edits is not implemented.
+17. **6.5a — Local transport and settings.**
+    --local name=origin supplies addresses outside the manifest. Ports are hints,
+    never discovered or connected automatically. Literal loopback, RFC 1918, ULA,
+    link-local and mapped IPv4 addresses are checked. Only .local host names may
+    resolve; every answer must be local. Each request resolves afresh and uses a
+    fresh reqwest client pinned to those answers, without proxies, pooling,
+    cookies or redirects. HTTPS uses rustls verification with system trust roots. Public net remains
+    denied. Limits are 64 requests per call, 1 MiB request bodies, 8 MiB responses,
+    64 headers of up to 8 KiB and a 20-second HTTP deadline. Local secrets use
+    manifest-declared headers and host-only --local-secret values, held in memory;
+    no platform keychain adapter is provided. Forged secret headers are replaced.
+18. **6.5a — Host-made mesh fallback.**
+    --selection-3mf supplies an already exported selection. Bridge export covers
+    the whole design. The documented file.save_mesh command defaults to all
+    bodies and has no quality parameter; the documented inspection does not
+    define selection-to-body mapping. This host uses the explicit file selection
+    fallback. Only empty bodies and standard quality are accepted; named bodies
+    and other qualities return invalid.
+    Mesh bytes stay in the host, require mesh permission, and replace Content-Type
+    with model/3mf. Nonempty plugin body is invalid, a second mesh is limit, and
+    a file larger than 256 MiB fails before any connection. The host passes the
+    file unchanged; the companion validates the 3MF package. This fallback does
+    not claim per-quality equivalence to file.save_mesh.
+19. **6.7a / 9b — Text surfaces and refresh.**
+    The text host validates surface worlds, labels, entry references and duplicate
+    widgets. It prints the widget from the same single validated status item as
+    the panel, with the state enum standing for the host colour. Invalid renders
+    keep the previous panel and widget. The menu offers open-panel; widget leaves
+    only that surface visible. There is no desktop ribbon, core-slot registry or simultaneous multi-plugin widget layout;
+    cross-plugin placement caps do not apply to this one-plugin text UI.
+    The visible loop owns one timer; panel imports clamp intervals to 2 seconds,
+    replace prior schedules and coalesce missed ticks. hide drops the pending
+    tick and show starts a fresh interval. Actions and transactions cannot schedule.
+    Successful panel calls still start fresh instances as described in entry 6;
+    only the visible surface retains the interval. Dropping it clears the timer.
+20. **WIT store.previous-version.**
+    Version records are separate from plugin storage and readable without store
+    permission. A successful command, import or panel event records the version;
+    failed or trapped calls leave the previous record intact. The reference host
+    does not implement schema generation, input/output schemas or plugin test from
+    section 5a. Unknown unsupported manifest fields continue to be refused.
+21. **Print API v1 — Fleet controls.**
+    The component uses the additive clear route and needs_clearing field, handles
+    204 responses, encodes opaque IDs and query values, and displays companion
+    errors as plain text. Physical entries require explicit printer parameters;
+    start and cancel also require a job. Panel clicks freeze these IDs before
+    asking the host. Start also checks its prepared job matches that printer.
+    Profile overrides are optional query fields. The companion owns bed clearance,
+    fresh telemetry, prepared-file integrity and token reuse checks. No machine
+    action is retried automatically.
+22. **Build dependencies — cadmpeg revision.**
+    Importer dependencies use fb1cd0a, matching the sibling Dutchman core. Mixed
+    revisions produce incompatible CADIR and report types. The geometry-only
+    adapter sets the core's new source_step field to None; its input families
+    do not carry an unchanged source STEP file.
+23. **6.1 — Compilation deadline.**
+    Cranelift compiles inside a host-owned Rayon pool of three threads. Serial
+    compilation of the current Fusion component exceeded 60 seconds in smoke.
+    Parallel compilation keeps the existing 60-second deadline and 16 MiB cap;
+    the compiler pool is bounded independently of Wasm execution.

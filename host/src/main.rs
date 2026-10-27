@@ -10,6 +10,16 @@ struct Cli {
     yes: bool,
     #[arg(long, global = true, env = "SOLIDCRAFT_CONTROL_PORT")]
     port: Option<u16>,
+    /// Host-owned service addresses, for example dutchman-print=http://127.0.0.1:8730.
+    #[arg(long, global = true)]
+    local: Vec<String>,
+    #[arg(long, global = true)]
+    local_secret: Vec<String>,
+    #[arg(long, global = true)]
+    selection_3mf: Option<PathBuf>,
+    /// Test-only physical confirmation; requires DUTCHMAN_PLUGINS_TEST=1.
+    #[arg(long, global = true)]
+    confirm_physical: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -46,6 +56,30 @@ fn folder(p: PathBuf) -> PathBuf {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let mut settings = dutchman_plugins::local::Settings {
+        selection: cli.selection_3mf,
+        confirm_physical: cli.confirm_physical,
+        ..Default::default()
+    };
+    for supplied in cli.local {
+        let (name, address) = supplied
+            .split_once('=')
+            .context("--local requires name=origin")?;
+        dutchman_plugins::local::origin(address).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        anyhow::ensure!(
+            settings
+                .addresses
+                .insert(name.into(), address.into())
+                .is_none(),
+            "Duplicate local address"
+        );
+    }
+    for supplied in cli.local_secret {
+        let (name, value) = supplied
+            .split_once('=')
+            .context("--local-secret requires name=value")?;
+        settings.secrets.insert(name.into(), value.into());
+    }
     match cli.command {
         Command::List => {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples");
@@ -86,7 +120,8 @@ async fn main() -> Result<()> {
             entry,
             json,
         } => {
-            let plugin = Plugin::load(&folder(plugin), cli.yes, false).await?;
+            let mut plugin = Plugin::load(&folder(plugin), cli.yes, false).await?;
+            plugin.settings = settings;
             if plugin.manifest.world.as_deref() == Some("panel-plugin") && entry.is_none() {
                 plugin.panel(cli.port).await?;
             } else {
@@ -101,7 +136,8 @@ async fn main() -> Result<()> {
             }
         }
         Command::Import { plugin, file, open } => {
-            let plugin = Plugin::load(&folder(plugin), cli.yes, false).await?;
+            let mut plugin = Plugin::load(&folder(plugin), cli.yes, false).await?;
+            plugin.settings = settings;
             let (bytes, report) = plugin.import(&file, cli.port).await?;
             let out = file.with_extension("solidcraft");
             let mut f = std::fs::OpenOptions::new()
@@ -125,10 +161,9 @@ async fn main() -> Result<()> {
             }
         }
         Command::Panel { plugin } => {
-            Plugin::load(&folder(plugin), cli.yes, false)
-                .await?
-                .panel(cli.port)
-                .await?;
+            let mut plugin = Plugin::load(&folder(plugin), cli.yes, false).await?;
+            plugin.settings = settings;
+            plugin.panel(cli.port).await?;
         }
     }
     Ok(())

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline end-to-end checks of the built reference plugins."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,8 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET = Path(os.getenv("CARGO_TARGET_DIR", str(Path(__file__).resolve().parents[1] / "target")))
+QUEUE_TARGET = Path.home() / ".cache/buildq/target/plugins" / f"{ROOT.name}-{hashlib.sha1(str(ROOT).encode()).hexdigest()[:8]}"
+TARGET = Path(os.getenv("CARGO_TARGET_DIR", str(ROOT / "target" if (ROOT / "target").exists() else QUEUE_TARGET)))
 BIN = os.getenv("DUTCHMAN_PLUGINS_BIN", str(TARGET / "release/dutchman-plugins"))
 
 class Smoke(unittest.TestCase):
@@ -29,7 +31,7 @@ class Smoke(unittest.TestCase):
         return run.stdout
 
     def test_check_all_worlds(self):
-        for plugin in ("pilot", "hello-panel", "importer-fusion", "importer-inventor", "importer-solidworks", "importer-freecad"):
+        for plugin in ("pilot", "hello-panel", "print", "importer-fusion", "importer-inventor", "importer-solidworks", "importer-freecad"):
             self.host("check", str(ROOT / "examples" / plugin))
 
     def test_importer_manifests_and_size_caps(self):
@@ -169,6 +171,8 @@ class Smoke(unittest.TestCase):
         self.assertEqual(len(runs), 1, requests)
         self.assertEqual(runs[0]["params"], {"command": "solid.box", "params": {"length": 12.0, "width": 12.0, "height": 12.0}, "allow_paths": []})
         self.assertIn("1 boxes", output)
+
+from print_api import PrintSmoke
 
 if __name__ == "__main__":
     unittest.main()

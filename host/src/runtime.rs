@@ -1,5 +1,6 @@
 use crate::{
     bindings::{command as cb, importer as ib, panel as b},
+    local::{Confirmation, FetchBudget, Refresh, Settings},
     manifest::{MIB, Manifest},
     policy, storage,
 };
@@ -76,6 +77,12 @@ impl ResourceLimiter for Budget {
     }
 }
 pub struct State {
+    settings: Settings,
+    confirmation: Option<Confirmation>,
+    fetch_budget: FetchBudget,
+    panel_call: bool,
+    read_only: bool,
+    refresh: Option<u32>,
     wasi_output: wasmtime_wasi::p2::pipe::MemoryOutputPipe,
     deadline: std::time::Instant,
     pub manifest: Manifest,
@@ -128,6 +135,12 @@ impl State {
         let max = manifest.limits.memory_mib * MIB;
         Ok(Self {
             wasi_output,
+            settings: Settings::default(),
+            confirmation: None,
+            fetch_budget: FetchBudget::default(),
+            panel_call: false,
+            read_only: false,
+            refresh: None,
             deadline: std::time::Instant::now() + Duration::from_secs(30),
             manifest,
             ctx: builder.build(),
@@ -153,6 +166,7 @@ impl State {
     pub fn reset(&mut self, transaction: bool) {
         self.transaction = transaction;
         self.calls = 0;
+        self.fetch_budget = FetchBudget::default();
         self.logs = 0;
         self.queued.clear();
     }
@@ -188,6 +202,18 @@ impl engine::Host for State {
         self.calls += 1;
         if self.calls > if self.transaction { 10000 } else { 1000 } {
             return Err(E::Limit("Engine call count".into()));
+        }
+        if self.read_only
+            && ![
+                "document.inspect",
+                "document.metadata",
+                "model.faces",
+                "model.edges",
+                "engine.describe",
+            ]
+            .contains(&command.as_str())
+        {
+            return Err(E::Denied("Read actions may only inspect".into()));
         }
         let args = policy::json(&args).map_err(invalid)?;
         policy::check(
@@ -243,6 +269,11 @@ impl log::Host for State {
     }
 }
 impl store::Host for State {
+    async fn previous_version(&mut self) -> Option<String> {
+        storage::data_dir()
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p.join("versions").join(&self.manifest.id)).ok())
+    }
     async fn get(&mut self, key: String) -> Result<Option<Vec<u8>>, E> {
         self.store_allowed()?;
         if !storage::key(&key) {
@@ -279,25 +310,51 @@ impl store::Host for State {
     }
 }
 impl net::Host for State {
-    async fn fetch(&mut self, _req: net::Request) -> Result<net::Response, E> {
-        Err(E::Denied("Network is unavailable in this host".into()))
+    async fn fetch(&mut self, req: net::Request) -> Result<net::Response, E> {
+        if self.transaction {
+            return Err(E::Denied("Network in a transaction".into()));
+        }
+        tokio::time::timeout(
+            Duration::from_secs(20),
+            self.fetch_budget.fetch(
+                &self.manifest,
+                &self.settings,
+                self.confirmation.as_ref(),
+                req,
+            ),
+        )
+        .await
+        .unwrap_or_else(|_| Err(E::Limit("Local request exceeded 20 seconds".into())))
     }
-    async fn has_secret(&mut self, _name: String) -> bool {
-        false
+    async fn has_secret(&mut self, name: String) -> bool {
+        self.manifest
+            .permissions
+            .local
+            .iter()
+            .filter_map(|s| s.secret.as_ref())
+            .any(|s| s.name == name)
+            && self.settings.secrets.contains_key(&name)
     }
 }
 impl host::Host for State {
+    async fn schedule_refresh(&mut self, seconds: u32) -> Result<(), E> {
+        if !self.panel_call || self.transaction {
+            return Err(E::Denied("Refresh only in panel calls".into()));
+        }
+        self.refresh = Some(seconds.max(2));
+        Ok(())
+    }
     async fn request_execute(&mut self, entry: String, params: String) -> Result<(), E> {
-        if self.transaction {
-            return Err(E::Denied("request-execute only in a handler".into()));
+        if self.transaction || self.read_only {
+            return Err(E::Denied("request-execute requires an edit handler".into()));
         }
         if !self
             .manifest
             .entries
             .iter()
-            .any(|e| e.name == entry && e.kind == "transaction")
+            .any(|e| e.name == entry && (e.kind == "transaction" || e.effect == "physical"))
         {
-            return Err(invalid("Unknown transaction entry"));
+            return Err(invalid("Unknown transaction or physical entry"));
         }
         policy::json(&params).map_err(invalid)?;
         if self.queued.len() >= 4 {
@@ -346,10 +403,13 @@ impl ib::solidcraft::plugin::output::Host for State {
     }
 }
 pub struct Plugin {
+    pub settings: Settings,
+    version_dir: PathBuf,
     pub manifest: Manifest,
     pub engine: Engine,
     component: Component,
     stop: Arc<AtomicBool>,
+    physical_pending: AtomicBool,
 }
 impl Drop for Plugin {
     fn drop(&mut self) {
@@ -388,7 +448,7 @@ impl Plugin {
         let approval_path = storage::data_dir()?
             .join("approvals")
             .join(format!("{}.json", manifest.id));
-        let fingerprint = serde_json::json!({"component":hash,"manifest":manifest}).to_string();
+        let fingerprint = crate::manifest::approval(&manifest);
         println!(
             "{} {} ({})\n{}\nWorld: {}",
             manifest.name,
@@ -428,10 +488,35 @@ impl Plugin {
             );
             println!("Import deadline: 120 seconds; output cap: 256 MiB.");
         }
+        for service in &manifest.permissions.local {
+            println!(
+                "Talks to a local service you set up: {} (default port {}).",
+                service.name, service.port
+            );
+            if service.mesh {
+                println!("Can send meshes of your design to {}.", service.name);
+            }
+        }
+        for e in manifest.entries.iter().filter(|e| e.effect == "physical") {
+            println!(
+                "Can start and stop machines: {} ({}) {:?}.",
+                e.label,
+                e.machine_kind.as_deref().unwrap_or(""),
+                e.confirm
+            );
+        }
+        if manifest.surfaces.iter().any(|s| s.kind == "toolbar-widget") {
+            println!("Shows a status area in the toolbar.");
+        }
+        if manifest.world.as_deref() == Some("panel-plugin") {
+            println!(
+                "Can refresh while its panel or status area is visible, at most once every 2 seconds."
+            );
+        }
         println!("Component SHA-256: {hash}");
         if !check && std::fs::read_to_string(&approval_path).ok().as_deref() != Some(&fingerprint) {
             if !yes {
-                eprint!("Approve this component and these permissions? y/N ");
+                eprint!("Approve these permissions? y/N ");
                 std::io::stderr().flush()?;
                 let mut answer = String::new();
                 std::io::stdin().read_line(&mut answer)?;
@@ -460,7 +545,10 @@ impl Plugin {
         let compile_engine = engine.clone();
         let component = tokio::time::timeout(
             Duration::from_secs(60),
-            detached_work(move || Ok(Component::new(&compile_engine, &bytes)?)),
+            detached_work(move || {
+                let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build()?;
+                pool.install(|| Ok(Component::new(&compile_engine, &bytes)?))
+            }),
         )
         .await
         .context("Component compilation exceeded 60 seconds")??;
@@ -497,10 +585,13 @@ impl Plugin {
                 }
             })?;
         let plugin = Self {
+            settings: Settings::default(),
+            version_dir: storage::data_dir()?.join("versions"),
             manifest,
             engine,
             component,
             stop,
+            physical_pending: AtomicBool::new(false),
         };
         // Typecheck without instantiation, so check never executes guest code.
         let linker = plugin.linker()?;
@@ -542,13 +633,20 @@ impl Plugin {
         }
         Ok(l)
     }
-    fn store(&self, state: State) -> Store<State> {
+    fn store(&self, mut state: State) -> Store<State> {
+        state.settings = self.settings.clone();
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.budget);
         store.set_hostcall_fuel(8 * MIB);
         store.set_epoch_deadline(1);
         store.epoch_deadline_async_yield_and_update(1);
         store
+    }
+    fn record_version(&self) -> Result<()> {
+        let folder = &self.version_dir;
+        std::fs::create_dir_all(folder)?;
+        std::fs::write(folder.join(&self.manifest.id), &self.manifest.version)?;
+        Ok(())
     }
     pub async fn run(&self, entry: &str, params: &str, port: Option<u16>) -> Result<String> {
         policy::json(params)?;
@@ -560,6 +658,91 @@ impl Plugin {
             .context("Unknown entry")?;
         let mut state = State::new(self.manifest.clone(), port)?;
         state.transaction = e.kind == "transaction";
+        state.read_only = e.effect == "read";
+        if e.effect == "physical" {
+            ensure!(
+                self.physical_pending
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok(),
+                "denied: a confirmation is already open"
+            );
+            struct Pending<'a>(&'a AtomicBool);
+            impl Drop for Pending<'_> {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::SeqCst);
+                }
+            }
+            let _pending = Pending(&self.physical_pending);
+            let approval_path = storage::data_dir()?
+                .join("approvals")
+                .join(format!("{}.json", self.manifest.id));
+            let approval_before = std::fs::read(&approval_path).ok();
+            let selection_stamp = || -> Result<_> {
+                self.settings
+                    .selection
+                    .as_ref()
+                    .map(|p| {
+                        let m = std::fs::metadata(p)?;
+                        Ok((m.len(), m.modified()?))
+                    })
+                    .transpose()
+            };
+            let selection_before = selection_stamp()?;
+            let c = e
+                .confirm
+                .as_ref()
+                .context("Missing physical confirmation")?;
+            eprintln!(
+                "{} — {} — {} — {}\nParams: {}",
+                self.manifest.name,
+                e.machine_kind.as_deref().unwrap_or(""),
+                c.machine,
+                c.action,
+                params
+            );
+            if self.settings.confirm_physical {
+                ensure!(
+                    std::env::var("DUTCHMAN_PLUGINS_TEST").as_deref() == Ok("1"),
+                    "--confirm-physical is for tests only"
+                );
+                ensure!(
+                    !self.settings.addresses.is_empty()
+                        && self
+                            .settings
+                            .addresses
+                            .values()
+                            .all(|a| crate::local::origin(a)
+                                .ok()
+                                .is_some_and(|u| u.host_str() == Some("127.0.0.1"))),
+                    "Test confirmation requires loopback test services"
+                );
+            } else {
+                use std::io::IsTerminal;
+                ensure!(
+                    std::io::stdin().is_terminal(),
+                    "denied: this action needs confirmation in the terminal"
+                );
+                let mut tty = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open("/dev/tty")
+                    .context("denied: confirmation terminal unavailable")?;
+                write!(tty, "Press {}? Type y to confirm: ", c.action)?;
+                tty.flush()?;
+                let mut answer = String::new();
+                std::io::BufReader::new(tty).read_line(&mut answer)?;
+                ensure!(answer.trim() == "y", "denied: physical action cancelled");
+            }
+            ensure!(
+                approval_before == std::fs::read(&approval_path).ok(),
+                "denied: approval changed during confirmation"
+            );
+            ensure!(
+                selection_before == selection_stamp()?,
+                "denied: selection changed during confirmation"
+            );
+            state.confirmation = Some(Confirmation::new()?);
+        }
         let seconds = if state.transaction {
             self.manifest.limits.transaction_seconds
         } else {
@@ -588,6 +771,7 @@ impl Plugin {
             }
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
             policy::json(&result)?;
+            self.record_version()?;
             Ok(result)
         })
         .await
@@ -640,6 +824,7 @@ impl Plugin {
                 .await?
                 .map_err(|e| anyhow::anyhow!("{e:?}"))?;
             ensure!(report.len() <= 65536, "limit: report exceeds 64 KiB");
+            self.record_version()?;
             Ok((std::mem::take(&mut store.data_mut().output), report))
         })
         .await
@@ -669,6 +854,7 @@ fn panel_valid(items: &mut [panel_types::Item], markers: &[panel_types::Marker])
         id(&b.id)?;
         text(&b.label)
     }
+    let mut status_seen = false;
     for item in items {
         match item {
             Item::Heading(t) => text(t)?,
@@ -719,6 +905,22 @@ fn panel_valid(items: &mut [panel_types::Item], markers: &[panel_types::Marker])
                     text(s)?;
                 }
             }
+            Item::Status(s) => {
+                ensure!(!status_seen, "invalid: duplicate status");
+                status_seen = true;
+                ensure!(
+                    s.lines.len() <= 2
+                        && s.lines.iter().all(|s| !s.is_empty()
+                            && s.chars().count() <= 40
+                            && !s.chars().any(char::is_control)),
+                    "invalid: status lines"
+                );
+                ensure!(
+                    s.progress
+                        .is_none_or(|p| p.is_finite() && (0.0..=1.0).contains(&p)),
+                    "invalid: status progress"
+                );
+            }
             Item::Separator => {}
         }
     }
@@ -735,21 +937,118 @@ fn panel_valid(items: &mut [panel_types::Item], markers: &[panel_types::Marker])
     Ok(())
 }
 impl Plugin {
+    fn draw_panel(&self, items: &[panel_types::Item], view: (bool, bool)) {
+        if view.0 {
+            println!("{items:#?}");
+        }
+        if view.1
+            && self
+                .manifest
+                .surfaces
+                .iter()
+                .any(|s| s.kind == "toolbar-widget")
+        {
+            let status = items.iter().find_map(|item| {
+                if let panel_types::Item::Status(s) = item {
+                    Some(s)
+                } else {
+                    None
+                }
+            });
+            println!("Widget: {status:?}; menu: Open panel (open-panel)");
+        }
+    }
     pub async fn panel(&self, port: Option<u16>) -> Result<()> {
         ensure!(
             self.manifest.world.as_deref() == Some("panel-plugin"),
             "Not a panel"
         );
         let mut previous = Vec::new();
-        self.panel_event(panel_types::Event::Opened, port, &mut previous)
-            .await?;
-        println!("Events: {{\"id\":\"make-box\",\"inputs\":{{\"size\":10}}}}; quit to close");
+        let mut view = (
+            true,
+            self.manifest
+                .surfaces
+                .iter()
+                .any(|s| s.kind == "toolbar-widget"),
+        );
+        let mut refresh = Refresh::default();
+        refresh.visible(true, std::time::Instant::now());
+        self.panel_event(
+            panel_types::Event::Opened,
+            port,
+            &mut previous,
+            &mut refresh,
+            view,
+        )
+        .await?;
+        println!(
+            "Events: {{\"id\":\"button-id\",\"inputs\":{{}}}}; widget/open-panel; hide/show; quit"
+        );
         let stdin = std::io::stdin();
-        // No guest call or store survives while the text UI waits for a person.
-        for line in stdin.lock().lines() {
-            let line = line?;
-            if line.trim() == "quit" {
+        let mut input = stdin.lock();
+        loop {
+            if refresh.take(std::time::Instant::now()) {
+                if let Err(e) = self
+                    .panel_event(
+                        panel_types::Event::Refresh,
+                        port,
+                        &mut previous,
+                        &mut refresh,
+                        view,
+                    )
+                    .await
+                {
+                    eprintln!("Panel call failed: {e:#}");
+                }
+                continue;
+            }
+            let mut fds = [rustix::event::PollFd::new(
+                &stdin,
+                rustix::event::PollFlags::IN,
+            )];
+            if rustix::event::poll(
+                &mut fds,
+                Some(&rustix::event::Timespec {
+                    tv_sec: 0,
+                    tv_nsec: 100_000_000,
+                }),
+            )? == 0
+            {
+                continue;
+            }
+            let mut line = String::new();
+            if input.read_line(&mut line)? == 0 {
                 break;
+            }
+            match line.trim() {
+                "quit" => break,
+                "hide" => {
+                    view = (false, false);
+                    refresh.visible(false, std::time::Instant::now());
+                    continue;
+                }
+                "show" | "open-panel" => {
+                    view.0 = true;
+                    refresh.visible(true, std::time::Instant::now());
+                    self.draw_panel(&previous, view);
+                    continue;
+                }
+                "widget" => {
+                    view = (
+                        false,
+                        self.manifest
+                            .surfaces
+                            .iter()
+                            .any(|s| s.kind == "toolbar-widget"),
+                    );
+                    refresh.visible(view.1, std::time::Instant::now());
+                    self.draw_panel(&previous, view);
+                    continue;
+                }
+                _ => {}
+            }
+            if !view.0 {
+                continue;
             }
             let result = async {
                 let v = policy::json(&line)?;
@@ -763,7 +1062,14 @@ impl Plugin {
                 if let Some(obj) = v.get("inputs").and_then(serde_json::Value::as_object) {
                     ensure!(obj.len() <= 2000, "Too many event inputs");
                     for (key, value) in obj {
-                        let value = if let Some(n) = value.as_f64() {
+                        let choice = previous.iter().any(
+                            |item| matches!(item, panel_types::Item::Choice(c) if c.id == *key),
+                        );
+                        let value = if choice {
+                            panel_types::Value::Selected(u32::try_from(
+                                value.as_u64().context("Choice needs an index")?,
+                            )?)
+                        } else if let Some(n) = value.as_f64() {
                             panel_types::Value::Number(n)
                         } else if let Some(b) = value.as_bool() {
                             panel_types::Value::Checked(b)
@@ -783,6 +1089,8 @@ impl Plugin {
                     }),
                     port,
                     &mut previous,
+                    &mut refresh,
+                    view,
                 )
                 .await
             }
@@ -798,8 +1106,11 @@ impl Plugin {
         event: panel_types::Event,
         port: Option<u16>,
         previous: &mut Vec<panel_types::Item>,
+        refresh: &mut Refresh,
+        view: (bool, bool),
     ) -> Result<()> {
         let mut store = self.store(State::new(self.manifest.clone(), port)?);
+        store.data_mut().panel_call = true;
         let l = self.linker()?;
         let (items, queued) = tokio::time::timeout(Duration::from_secs(30), async {
             let p = b::PanelPlugin::instantiate_async(&mut store, &self.component, &l).await?;
@@ -818,13 +1129,18 @@ impl Plugin {
         })
         .await
         .context("limit: panel deadline")??;
-        println!("{items:#?}");
+        if let Some(seconds) = store.data_mut().refresh.take() {
+            refresh.schedule(seconds, std::time::Instant::now());
+        }
+        self.record_version()?;
+        self.draw_panel(&items, view);
         *previous = items;
         for (entry, params) in queued {
             let result = self.run(&entry, &params, port).await;
             let outcome = result.map_err(|e| format!("{e:#}"));
             // Deliver executed once. No recursive request chains are accepted from this notification.
             let mut store = self.store(State::new(self.manifest.clone(), port)?);
+            store.data_mut().panel_call = true;
             let l = self.linker()?;
             tokio::time::timeout(Duration::from_secs(30), async {
                 let p = b::PanelPlugin::instantiate_async(&mut store, &self.component, &l).await?;
@@ -841,12 +1157,16 @@ impl Plugin {
                 let mut items = p.solidcraft_plugin_panel().call_render(&mut store).await?;
                 let markers = p.solidcraft_plugin_panel().call_markers(&mut store).await?;
                 panel_valid(&mut items, &markers)?;
-                println!("{items:#?}");
+                self.draw_panel(&items, view);
                 *previous = items;
                 Ok::<_, anyhow::Error>(())
             })
             .await
             .context("limit: executed deadline")??;
+            if let Some(seconds) = store.data_mut().refresh.take() {
+                refresh.schedule(seconds, std::time::Instant::now());
+            }
+            self.record_version()?;
         }
         Ok(())
     }
@@ -950,6 +1270,110 @@ mod tests {
         }
         assert!(panel_valid(&mut items, &[]).is_err());
     }
+    #[test]
+    fn t32_widget_validation() {
+        use panel_types::{Item, Status, WidgetState};
+        let good = Item::Status(Status {
+            lines: vec!["Printer".into(), "Printing".into()],
+            progress: Some(0.5),
+            state: WidgetState::Busy,
+        });
+        assert!(panel_valid(&mut [good.clone()], &[]).is_ok());
+        assert!(panel_valid(&mut [good.clone(), good.clone()], &[]).is_err());
+        for lines in [
+            vec!["x".repeat(41)],
+            vec!["a".into(), "b".into(), "c".into()],
+            vec!["bad\nlabel".into()],
+        ] {
+            assert!(
+                panel_valid(
+                    &mut [Item::Status(Status {
+                        lines,
+                        progress: None,
+                        state: WidgetState::Idle
+                    })],
+                    &[]
+                )
+                .is_err()
+            );
+        }
+        for progress in [f64::NAN, f64::INFINITY, -0.1, 1.1] {
+            assert!(
+                panel_valid(
+                    &mut [Item::Status(Status {
+                        lines: vec![],
+                        progress: Some(progress),
+                        state: WidgetState::Idle
+                    })],
+                    &[]
+                )
+                .is_err()
+            );
+        }
+    }
+    #[tokio::test]
+    async fn t28_t31_t34_t37_host_denials() {
+        use host::Host as _;
+        use net::Host as _;
+        let manifest: Manifest =
+            serde_json::from_str(include_str!("../../examples/print/plugin.json")).unwrap();
+        let mut state = State::new(manifest, None).unwrap();
+        let req = || net::Request {
+            method: net::Method::Get,
+            url: "local:dutchman-print/api/v1/printers".into(),
+            headers: vec![],
+            body: vec![],
+            mesh: None,
+        };
+        assert!(
+            matches!(state.fetch(req()).await, Err(E::Failed(s)) if s.contains("dutchman-print"))
+        );
+        let mut forged = req();
+        forged
+            .headers
+            .push(("pLuGiN-CoNfIrMaTiOn".into(), "forged".into()));
+        assert!(matches!(state.fetch(forged).await, Err(E::Denied(_))));
+        let mut raw = req();
+        raw.url = "http://127.0.0.1/api/v1/printers".into();
+        assert!(matches!(state.fetch(raw).await, Err(E::Denied(_))));
+        assert!(matches!(state.schedule_refresh(0).await, Err(E::Denied(_))));
+        state.panel_call = true;
+        state.schedule_refresh(0).await.unwrap();
+        assert_eq!(state.refresh, Some(2));
+        state.read_only = true;
+        assert!(matches!(
+            state.request_execute("print".into(), "{}".into()).await,
+            Err(E::Denied(_))
+        ));
+        state.read_only = false;
+        state
+            .settings
+            .addresses
+            .insert("dutchman-print".into(), "http://127.0.0.1:1".into());
+        let mesh = || net::MeshBody {
+            bodies: vec![],
+            format: net::MeshFormat::ThreeMf,
+            quality: net::MeshQuality::Standard,
+        };
+        let mut both = req();
+        both.mesh = Some(mesh());
+        both.body.push(1);
+        assert!(matches!(state.fetch(both).await, Err(E::Invalid(_))));
+        state.manifest.permissions.local[0].mesh = false;
+        let mut no_permission = req();
+        no_permission.mesh = Some(mesh());
+        assert!(matches!(
+            state.fetch(no_permission).await,
+            Err(E::Denied(_))
+        ));
+        state.manifest.permissions.local[0].mesh = true;
+        let mut first = req();
+        first.mesh = Some(mesh());
+        assert!(matches!(state.fetch(first).await, Err(E::Failed(_))));
+        let mut second = req();
+        second.mesh = Some(mesh());
+        assert!(matches!(state.fetch(second).await, Err(E::Limit(_))));
+    }
     #[tokio::test]
     async fn trap_timeout_and_memory_breach_get_fresh_instances() {
         let dir = tempfile::tempdir().unwrap();
@@ -991,7 +1415,8 @@ mod tests {
             (instance (export "solidcraft:plugin/command@0.1.0") (export "plugin-error" (type $error)) (export "execute" (func $execute)))
         )"#;
         std::fs::write(dir.path().join("test.wasm"), wat::parse_str(wat).unwrap()).unwrap();
-        let plugin = Plugin::load(dir.path(), true, true).await.unwrap();
+        let mut plugin = Plugin::load(dir.path(), true, true).await.unwrap();
+        plugin.version_dir = dir.path().join("versions");
         assert_eq!(plugin.run("ok", "{}", None).await.unwrap(), "1");
         for entry in ["trap", "loop", "grow"] {
             assert!(plugin.run(entry, "{}", None).await.is_err(), "{entry}");

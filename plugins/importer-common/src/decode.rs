@@ -136,6 +136,7 @@ fn decode_unguarded<C: Codec>(
             .file_name()
             .map(|name| name.to_string_lossy().into_owned()),
         assembly: None,
+        source_step: None,
     })
 }
 

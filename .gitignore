@@ -11,3 +11,4 @@ spec-surfaces/
 BRIEF.md
 codex.log
 *.log
+.build-tmp/

@@ -11,11 +11,16 @@ clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.11"
 directories = "6"
 base64 = "0.22"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
-wasmtime = { version = "50", default-features = false, features = ["anyhow", "async", "component-model", "cranelift", "runtime", "std", "wat"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+wasmtime = { version = "50", default-features = false, features = ["anyhow", "async", "component-model", "cranelift", "parallel-compilation", "runtime", "std", "wat"] }
 wasmtime-wasi = { version = "50", default-features = false, features = ["p2"] }
 solidcraft-bridge = { path = "../../dutchman-bridge/rust" }
 sc-pilot = { path = "../../sc-pilot-wasmcore", default-features = false, features = ["core"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
+getrandom = "0.3"
+rayon = "1"
+url = "2"
+rustix = { version = "1", features = ["event"] }
 [dev-dependencies]
 tempfile = "3"
 wat = "1"
