@@ -257,8 +257,12 @@ fn text(s: String) -> panel::Item {
         tone: panel::Tone::Normal,
     })
 }
+/// A printer with a live job: printing, paused, or stopped and waiting for a person.
 fn busy(p: &Value) -> bool {
-    matches!(p["state"].as_str(), Some("printing" | "paused"))
+    matches!(
+        p["state"].as_str(),
+        Some("printing" | "paused" | "attention")
+    )
 }
 fn short(s: &str) -> String {
     let value: String = s.chars().filter(|c| !c.is_control()).take(40).collect();
@@ -411,13 +415,20 @@ impl panel::Guest for Print {
                     .as_f64()
                     .filter(|p| p.is_finite())
                     .map(|p| p.clamp(0.0, 1.0)),
-                panel::WidgetState::Busy,
+                if p["state"] == "attention" {
+                    panel::WidgetState::Attention
+                } else {
+                    panel::WidgetState::Busy
+                },
             )
         } else {
             (
                 vec![format!("{} printers idle", fleet.len())],
                 None,
-                if fleet.iter().any(|p| p["needs_clearing"] == true) {
+                if fleet
+                    .iter()
+                    .any(|p| p["needs_clearing"] == true || p["state"] == "attention")
+                {
                     panel::WidgetState::Attention
                 } else {
                     panel::WidgetState::Idle
@@ -474,7 +485,7 @@ impl panel::Guest for Print {
             "Print",
             job["state"] == "ready"
                 && job["printer"] == selected
-                && current.is_some_and(|p| p["needs_clearing"] != true),
+                && current.is_some_and(|p| p["state"] == "idle" && p["needs_clearing"] != true),
         );
         if let Some(p) = current {
             reviewed_button(&mut items, "pause", "Pause", p["state"] == "printing");
@@ -503,6 +514,12 @@ impl panel::Guest for Print {
                 p["name"].as_str().unwrap_or("Printer"),
                 p["state"].as_str().unwrap_or("unknown")
             )));
+            // Say why a printer needs a person or cannot take a job right now.
+            if let (Some("attention" | "busy" | "error"), Some(detail)) =
+                (p["state"].as_str(), p["detail"].as_str())
+            {
+                items.push(text(short(detail)));
+            }
         }
         items
     }

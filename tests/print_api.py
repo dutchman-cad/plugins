@@ -344,6 +344,21 @@ class PrintSmoke(unittest.TestCase):
         self.assertNotEqual(actions[0][3]["plugin-confirmation"], actions[1][3]["plugin-confirmation"])
         self.assertTrue(all("plugin-confirmation" not in r[3] for r in self.requests if r[2] == "/api/v1/confirmations"))
 
+    def test_attention_shows_reason_and_allows_only_cancel(self):
+        self.state = "attention"
+        self.detail = "Filament runout"
+        self.needs_clearing = False
+        self.job_state = "printing"
+        run = self.run_host("panel", "print", input='{"id":"pause"}\n{"id":"resume"}\n{"id":"cancel"}\nquit\n')
+        self.assertIn("Workbench: attention", run.stdout)
+        self.assertIn("Filament runout", run.stdout)
+        self.assertIn("Attention", run.stdout)
+        reviewed = [json.loads(r[4])["action"] for r in self.requests if r[2] == "/api/v1/confirmations"]
+        self.assertIn("cancel", reviewed)
+        issued = [c["action"] for c in self.challenges.values()]
+        self.assertEqual(issued, [a for a in issued if a == "cancel"])
+        self.assertFalse(any(r[2].endswith(("/pause", "/resume", "/start")) for r in self.requests))
+
     def test_profile_overrides_are_encoded(self):
         self.run_host("run", "print", "slice", '{"printer":"bench","print_profile":"Fine & slow","filament_profile":"PLA+"}')
         self.assertEqual(self.requests[-1][2], "/api/v1/jobs?printer=bench&print_profile=Fine%20%26%20slow&filament_profile=PLA%2B")
