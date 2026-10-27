@@ -15,6 +15,7 @@ concurrency:
 env:
   BRIDGE_REV: 45c970bf5f3a702f4aa25a643407424b3fdf268e
   DUTCHMAN_REV: 0df4d2ee9758c6eaf430720a8b5ebc1b963d313c
+  PRINT_REV: ea343326aa7ed25717f7288ceac020075fc9ec29
   CARGO_TARGET_DIR: ${{ github.workspace }}/plugins/target
   TMPDIR: ${{ github.workspace }}/plugins/.build-tmp
   CARGO_TERM_COLOR: always
@@ -51,6 +52,14 @@ jobs:
           ref: ${{ env.DUTCHMAN_REV }}
           path: dutchman
           persist-credentials: false
+      - name: Checkout Print
+        if: matrix.check == 'components'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: dutchman-cad/print
+          ref: ${{ env.PRINT_REV }}
+          path: print
+          persist-credentials: false
       - name: Create scratch directory
         run: mkdir -p "$TMPDIR"
       - name: Install Rust stable
@@ -62,7 +71,7 @@ jobs:
         uses: Swatinem/rust-cache@bc2d2e71bd35c5549942babaa51a89c586b981d1 # v2.8.1
         with:
           workspaces: plugins -> target
-          key: ${{ matrix.check }}-${{ env.BRIDGE_REV }}-${{ env.DUTCHMAN_REV }}
+          key: ${{ matrix.check }}-${{ env.BRIDGE_REV }}-${{ env.DUTCHMAN_REV }}-${{ env.PRINT_REV }}
       - name: Check formatting
         if: matrix.check == 'fmt'
         run: cargo fmt --all --check
@@ -86,3 +95,9 @@ jobs:
       - name: Run offline smoke tests
         if: matrix.check == 'components'
         run: python3 tests/smoke.py
+      - name: Build Print companion
+        if: matrix.check == 'components'
+        run: cargo build --manifest-path ../print/Cargo.toml --release --locked --bin dutchman-print
+      - name: Run Print companion smoke test
+        if: matrix.check == 'components'
+        run: python3 tests/print_e2e.py

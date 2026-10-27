@@ -27,7 +27,7 @@ Panel components:
 | Hello panel | 175,846 | 0.17 |
 | Print | 204,070 | 0.19 |
 
-All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (24),
+All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (25),
 and host/guest lint checks pass. Earlier live checks, against the official SolidCraft 0.22.1 Linux
 release: the Fusion importer converts a synthetic cube and SolidCraft opens it, Pilot
 answers "round all edges 3 mm" with the fillet command, and the hello panel's button
@@ -43,9 +43,9 @@ and have the wasm32-wasip2 target installed.
 ## Sibling revisions
 
 CI pins the sibling checkouts in `.github/workflows/ci.yml`, under the workflow
-`env:` keys `BRIDGE_REV` and `DUTCHMAN_REV`. To move either revision, update its
-commit SHA and run CI. The checkout directories are `../dutchman-bridge` and
-`../dutchman`, beside this repository.
+`env:` keys `BRIDGE_REV`, `DUTCHMAN_REV`, and `PRINT_REV`. To move a revision,
+update its commit SHA and run CI. The checkout directories are `../dutchman-bridge`,
+`../dutchman`, and `../print`, beside this repository.
 
 ## Building and testing
 
@@ -73,6 +73,16 @@ Host and plugins share no private interfaces.
 In CI, or when `buildq` is unavailable, the build script uses plain Cargo and
 reads components from `CARGO_TARGET_DIR` (default `./target`), with Cargo's default
 job count. Local queued builds continue to use three jobs.
+
+`python3 tests/print_e2e.py` runs one additional smoke test against the real
+Dutchman Print companion pinned by CI at `PRINT_REV=ea343326aa7ed25717f7288ceac020075fc9ec29`.
+It prepares a synthetic mesh with the built-in simulated backend (no slicer needed),
+checks separate Bed is clear and Print challenges, verifies printing, then uses a
+printer-level Stop challenge and checks cancellation and replay refusal. It uses only
+127.0.0.1, starts and shuts down its own companion, and requires no printer. CI builds
+`dutchman-print` alongside the host; local runs can set `DUTCHMAN_PRINT_BIN` and
+`DUTCHMAN_PLUGINS_BIN` to their release binaries. Set `TMPDIR` to a writable build
+scratch directory; binary defaults are under `${CARGO_TARGET_DIR:-./target}/release`.
 
 Use the default ~/.cargo cache; do not create a second CARGO_HOME.
 The build queue sets the target directory and a conservative job count.
