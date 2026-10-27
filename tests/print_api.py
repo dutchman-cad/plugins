@@ -102,7 +102,7 @@ class PrintSmoke(unittest.TestCase):
                             "needs_clearing": case.needs_clearing}
                 if path == "/api/v1/confirmations":
                     action, printer, job = data.get("action"), data.get("printer"), data.get("job")
-                    if action not in ("start", "cancel", "pause", "resume", "clear") or not isinstance(printer, str):
+                    if action not in ("start", "cancel", "pause", "resume", "clear", "stop") or not isinstance(printer, str):
                         return self.reply(400, {"error": "Invalid action or printer."})
                     if printer != "bench":
                         return self.reply(404, {"error": "Printer not found."})
@@ -112,7 +112,8 @@ class PrintSmoke(unittest.TestCase):
                         return self.reply(404, {"error": "Job not found."})
                     compatible = {"start": case.state == "idle" and not case.needs_clearing and case.job_state == "ready",
                                   "clear": case.state == "idle", "pause": case.state == "printing",
-                                  "resume": case.state == "paused", "cancel": case.job_state in ("ready", "printing", "paused")}
+                                  "resume": case.state == "paused", "cancel": case.job_state in ("ready", "printing", "paused"),
+                                  "stop": case.state in ("printing", "paused", "attention") and bool(case.live_job_id)}
                     if not compatible[action]:
                         return self.reply(409, {"error": "Action incompatible with printer."})
                     challenge = {"id": str(len(case.challenges) + 1), "action": action, "printer": printer,
@@ -120,7 +121,7 @@ class PrintSmoke(unittest.TestCase):
                                  "observed": observation(), "expires_at": int(time.time()) + case.challenge_seconds}
                     case.challenges[challenge["id"]] = dict(challenge, used=False, digest=case.digest, job_state=case.job_state)
                     return self.reply(201, challenge)
-                if not re.fullmatch(r"/api/v1/(jobs/[^/]+/(start|cancel)|printers/[^/]+/(pause|resume|clear))", path):
+                if not re.fullmatch(r"/api/v1/(jobs/[^/]+/(start|cancel)|printers/[^/]+/(pause|resume|clear|stop))", path):
                     return self.reply(404, {"error": "Unknown route."})
                 action = path.rsplit("/", 1)[-1]
                 printer = "bench" if path.startswith("/api/v1/jobs/") else unquote(path.split("/")[-2])
@@ -155,6 +156,11 @@ class PrintSmoke(unittest.TestCase):
                     case.state = "printing"
                 elif action == "cancel":
                     case.state = "idle"
+                elif action == "stop":
+                    case.state = "idle"
+                    case.job_state = "cancelled"
+                    return self.reply(200, {"id": "bench", "name": "Workbench", "model": "Fake", "state": "idle",
+                                            "needs_clearing": True, "echo": values[0]})
                 else:
                     return self.reply(404, {"error": "Unknown route."})
                 case.job_state = "cancelled" if action == "cancel" else case.state
@@ -344,20 +350,33 @@ class PrintSmoke(unittest.TestCase):
         self.assertNotEqual(actions[0][3]["plugin-confirmation"], actions[1][3]["plugin-confirmation"])
         self.assertTrue(all("plugin-confirmation" not in r[3] for r in self.requests if r[2] == "/api/v1/confirmations"))
 
-    def test_attention_shows_reason_and_allows_only_cancel(self):
+    def test_attention_shows_reason_and_allows_only_stop(self):
         self.state = "attention"
         self.detail = "Filament runout"
         self.needs_clearing = False
         self.job_state = "printing"
-        run = self.run_host("panel", "print", input='{"id":"pause"}\n{"id":"resume"}\n{"id":"cancel"}\nquit\n')
+        run = self.run_host("panel", "print", input='{"id":"pause"}\n{"id":"resume"}\n{"id":"stop"}\nquit\n')
         self.assertIn("Workbench: attention", run.stdout)
         self.assertIn("Filament runout", run.stdout)
         self.assertIn("Attention", run.stdout)
         reviewed = [json.loads(r[4])["action"] for r in self.requests if r[2] == "/api/v1/confirmations"]
-        self.assertIn("cancel", reviewed)
+        self.assertIn("stop", reviewed)
         issued = [c["action"] for c in self.challenges.values()]
-        self.assertEqual(issued, [a for a in issued if a == "cancel"])
+        self.assertEqual(issued, [a for a in issued if a == "stop"])
         self.assertFalse(any(r[2].endswith(("/pause", "/resume", "/start")) for r in self.requests))
+
+    def test_stop_ends_an_external_live_job_with_its_own_challenge(self):
+        self.state = "printing"
+        self.needs_clearing = False
+        self.live_job_name = "External cube"
+        run = self.run_host("panel", "print", input='{"id":"stop"}\n{"id":"stop"}\nquit\n', confirm=True)
+        stops = [r for r in self.requests if r[2] == "/api/v1/printers/bench/stop"]
+        self.assertEqual(len(stops), 1)
+        challenge = self.challenges[json.loads(stops[0][4])["confirmation"]]
+        self.assertEqual((challenge["action"], challenge["job"]), ("stop", None))
+        self.assertIn(challenge["summary"], run.stdout)
+        self.assertFalse(any(r[2].endswith("/cancel") for r in self.requests))
+        self.assertEqual(self.state, "idle")
 
     def test_profile_overrides_are_encoded(self):
         self.run_host("run", "print", "slice", '{"printer":"bench","print_profile":"Fine & slow","filament_profile":"PLA+"}')
