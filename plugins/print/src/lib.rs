@@ -3,6 +3,7 @@ wit_bindgen::generate!({ path: "../../wit", world: "panel-plugin" });
 use exports::solidcraft::plugin::{command, panel};
 use serde_json::{Value, json};
 use solidcraft::plugin::{host, net, store, types::PluginError as E};
+use std::time::{SystemTime, UNIX_EPOCH};
 struct Print;
 fn invalid(s: impl ToString) -> E {
     E::Invalid(s.to_string())
@@ -29,6 +30,13 @@ fn encode(s: &str) -> String {
         .collect()
 }
 fn api(path: &str, post: bool, mesh: bool) -> Result<Value, E> {
+    api_body(path, post, mesh, None)
+}
+fn api_body(path: &str, post: bool, mesh: bool, body: Option<&Value>) -> Result<Value, E> {
+    let (status, value) = request(path, post, mesh, body)?;
+    checked(status, value)
+}
+fn request(path: &str, post: bool, mesh: bool, body: Option<&Value>) -> Result<(u16, Value), E> {
     let response = net::fetch(&net::Request {
         method: if post {
             net::Method::Post
@@ -36,8 +44,10 @@ fn api(path: &str, post: bool, mesh: bool) -> Result<Value, E> {
             net::Method::Get
         },
         url: format!("local:dutchman-print{path}"),
-        headers: vec![],
-        body: vec![],
+        headers: body
+            .map(|_| vec![("Content-Type".into(), "application/json".into())])
+            .unwrap_or_default(),
+        body: body.map(|v| v.to_string().into_bytes()).unwrap_or_default(),
         mesh: mesh.then_some(net::MeshBody {
             bodies: vec![],
             format: net::MeshFormat::ThreeMf,
@@ -49,7 +59,10 @@ fn api(path: &str, post: bool, mesh: bool) -> Result<Value, E> {
     } else {
         serde_json::from_slice(&response.body).map_err(invalid)?
     };
-    if !(200..300).contains(&response.status) {
+    Ok((response.status, value))
+}
+fn checked(status: u16, value: Value) -> Result<Value, E> {
+    if !(200..300).contains(&status) {
         return Err(E::Failed(
             value
                 .get("error")
@@ -88,7 +101,73 @@ fn selected(params: &Value) -> Result<String, E> {
         .map(str::to_string)
         .ok_or_else(|| invalid("Choose a printer."))
 }
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+fn review(entry: &str, params: &Value) -> Result<Value, E> {
+    if !["print", "cancel", "pause", "resume", "clear"].contains(&entry) {
+        return Err(invalid("Unknown confirmation action"));
+    }
+    let printer = selected(params)?;
+    let mut request =
+        json!({"action": if entry == "print" { "start" } else { entry }, "printer": printer});
+    if ["print", "cancel"].contains(&entry) {
+        request["job"] = params["job"].clone();
+    }
+    let key = format!("challenge_{entry}");
+    save(&key, &Value::Null)?;
+    let challenge = api_body("/api/v1/confirmations", true, false, Some(&request))?;
+    if challenge["id"].as_str().filter(|s| !s.is_empty()).is_none()
+        || challenge["summary"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .is_none()
+        || !challenge["observed"].is_object()
+        || challenge["expires_at"].as_u64().unwrap_or(0) <= now()
+        || challenge["action"] != request["action"]
+        || challenge["printer"] != request["printer"]
+        || challenge["job"] != request["job"]
+    {
+        return Err(invalid("Invalid confirmation challenge"));
+    }
+    save(&key, &challenge)?;
+    Ok(challenge)
+}
+fn machine(path: &str, entry: &str, params: &Value) -> Result<Value, E> {
+    let id = params["confirmation"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| invalid("Request a fresh confirmation challenge first."))?;
+    if params["summary"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .is_none()
+    {
+        return Err(invalid("Confirmation summary is required."));
+    }
+    let reviewed = load(&format!("challenge_{entry}"));
+    if reviewed["id"] != params["confirmation"]
+        || reviewed["summary"] != params["summary"]
+        || !challenge_matches(&reviewed, params)
+    {
+        return Err(invalid("Request a fresh confirmation challenge first."));
+    }
+    save(&format!("challenge_{entry}"), &Value::Null)?;
+    save("review_pending", &Value::Null)?;
+    let (status, value) = request(path, true, false, Some(&json!({"confirmation":id})))?;
+    if status == 409 {
+        // Reconcile through a read only. A new press and approval are required.
+        save("review_pending", &json!({"entry": entry, "params": params}))?;
+    }
+    checked(status, value)
+}
 fn execute(entry: &str, params: &Value) -> Result<Value, E> {
+    if entry == "review" {
+        return review(params["action"].as_str().unwrap_or(""), params);
+    }
     if entry == "status" {
         return printers();
     }
@@ -118,6 +197,8 @@ fn execute(entry: &str, params: &Value) -> Result<Value, E> {
             }
             let job = api(&path, true, true)?;
             save("job", &job)?;
+            save("challenge_print", &Value::Null)?;
+            save("challenge_cancel", &Value::Null)?;
             Ok(job)
         }
         "print" | "cancel" => {
@@ -132,15 +213,17 @@ fn execute(entry: &str, params: &Value) -> Result<Value, E> {
                 return Err(invalid("Prepare a job for the selected printer."));
             }
             let action = if entry == "print" { "start" } else { "cancel" };
-            let result = api(
+            let result = machine(
                 &format!("/api/v1/jobs/{}/{action}", encode(id)),
-                true,
-                false,
+                entry,
+                params,
             )?;
             save("job", &result)?;
             Ok(result)
         }
-        "pause" | "resume" | "clear" => api(&format!("/api/v1/printers/{p}/{entry}"), true, false),
+        "pause" | "resume" | "clear" => {
+            machine(&format!("/api/v1/printers/{p}/{entry}"), entry, params)
+        }
         _ => Err(invalid("Unknown print entry")),
     }
 }
@@ -185,6 +268,50 @@ fn short(s: &str) -> String {
         value
     }
 }
+fn action_params(entry: &str) -> Value {
+    let printer = load("printer");
+    let job = load("job");
+    let fleet = load("printers");
+    let active = fleet
+        .as_array()
+        .and_then(|a| a.iter().find(|p| p["id"] == printer && busy(p)));
+    let mut params = json!({"printer": printer});
+    if entry == "print" || entry == "cancel" {
+        params["job"] = if entry == "cancel" {
+            active
+                .map(|p| p["job_id"].clone())
+                .unwrap_or_else(|| job["id"].clone())
+        } else {
+            job["id"].clone()
+        };
+    }
+    params
+}
+fn challenge_matches(challenge: &Value, params: &Value) -> bool {
+    challenge["expires_at"].as_u64().unwrap_or(0) > now()
+        && challenge["printer"] == params["printer"]
+        && challenge["job"] == params["job"]
+}
+fn reviewed_button(items: &mut Vec<panel::Item>, entry: &str, label: &str, enabled: bool) {
+    if enabled {
+        let params = action_params(entry);
+        let mut challenge = load(&format!("challenge_{entry}"));
+        if !challenge_matches(&challenge, &params) {
+            match review(entry, &params) {
+                Ok(value) => challenge = value,
+                Err(error) => {
+                    items.push(text(message(error)));
+                    items.push(button(entry, label, false));
+                    return;
+                }
+            }
+        }
+        if let Some(summary) = challenge["summary"].as_str() {
+            items.push(text(summary.into()));
+        }
+    }
+    items.push(button(entry, label, enabled));
+}
 impl panel::Guest for Print {
     fn handle(event: panel::Event) -> Result<(), E> {
         let result = match event {
@@ -207,23 +334,20 @@ impl panel::Guest for Print {
                     }
                 }
                 if ["print", "cancel", "pause", "resume", "clear"].contains(&action.id.as_str()) {
-                    // Freeze the printer and job shown at the click into the confirmation params.
-                    let job = load("job");
-                    let printer = load("printer");
-                    let fleet = load("printers");
-                    let active_job = fleet
-                        .as_array()
-                        .and_then(|a| a.iter().find(|p| p["id"] == printer && busy(p)))
-                        .map(|p| p["job_id"].clone());
-                    let job_id = if action.id == "cancel" {
-                        active_job.unwrap_or_else(|| job["id"].clone())
+                    let params = action_params(&action.id);
+                    let challenge = load(&format!("challenge_{}", action.id));
+                    if !challenge_matches(&challenge, &params) {
+                        review(&action.id, &params).map(|_| ())
                     } else {
-                        job["id"].clone()
-                    };
-                    host::request_execute(
-                        &action.id,
-                        &json!({"printer":load("printer"), "job":job_id}).to_string(),
-                    )
+                        host::request_execute(
+                            &action.id,
+                            &json!({
+                                "printer": params["printer"], "job": params["job"],
+                                "confirmation": challenge["id"], "summary": challenge["summary"]
+                            })
+                            .to_string(),
+                        )
+                    }
                 } else if action.id == "slice" {
                     execute("slice", &json!({})).map(|_| ())
                 } else {
@@ -232,7 +356,15 @@ impl panel::Guest for Print {
             })(),
             panel::Event::Executed(e) => match e.outcome {
                 Ok(_) => printers().map(|_| ()),
-                Err(e) => Err(E::Failed(e)),
+                Err(e) => {
+                    let pending = load("review_pending");
+                    save("review_pending", &Value::Null)?;
+                    if let Some(entry) = pending["entry"].as_str() {
+                        let _ = printers();
+                        let _ = review(entry, &pending["params"]);
+                    }
+                    Err(E::Failed(e))
+                }
             },
             _ => Ok(()),
         };
@@ -336,21 +468,25 @@ impl panel::Guest for Print {
             items.push(text(format!("Estimate: {}", job["estimate"])));
         }
         items.push(button("slice", "Slice selection", current.is_some()));
-        items.push(button(
+        reviewed_button(
+            &mut items,
             "print",
             "Print",
-            job["state"] == "ready" && job["printer"] == selected,
-        ));
+            job["state"] == "ready"
+                && job["printer"] == selected
+                && current.is_some_and(|p| p["needs_clearing"] != true),
+        );
         if let Some(p) = current {
-            items.push(button("pause", "Pause", p["state"] == "printing"));
-            items.push(button("resume", "Resume", p["state"] == "paused"));
-            items.push(button(
+            reviewed_button(&mut items, "pause", "Pause", p["state"] == "printing");
+            reviewed_button(&mut items, "resume", "Resume", p["state"] == "paused");
+            reviewed_button(
+                &mut items,
                 "cancel",
                 "Cancel",
                 busy(p) || job["state"] == "ready" && job["printer"] == selected,
-            ));
+            );
             if p["needs_clearing"] == true {
-                items.push(button("clear", "Bed is clear", p["state"] == "idle"));
+                reviewed_button(&mut items, "clear", "Bed is clear", p["state"] == "idle");
             }
         }
         for p in fleet.iter().take(100) {
