@@ -17,7 +17,8 @@
         "port": 8730,
         "mesh": true
       }
-    ]
+    ],
+    "clock": true
   },
   "entries": [
     {
@@ -36,7 +37,7 @@
         "machine": "printer",
         "action": "Start printing"
       },
-      "params": "printer: id, job: id"
+      "params": "printer: id, job: id, confirmation: challenge id, summary: server summary"
     },
     {
       "name": "cancel",
@@ -48,7 +49,7 @@
         "machine": "printer",
         "action": "Cancel printing"
       },
-      "params": "printer: id, job: id"
+      "params": "printer: id, job: id, confirmation: challenge id, summary: server summary"
     },
     {
       "name": "pause",
@@ -60,7 +61,7 @@
         "machine": "printer",
         "action": "Pause printing"
       },
-      "params": "printer: id"
+      "params": "printer: id, confirmation: challenge id, summary: server summary"
     },
     {
       "name": "resume",
@@ -72,7 +73,7 @@
         "machine": "printer",
         "action": "Resume printing"
       },
-      "params": "printer: id"
+      "params": "printer: id, confirmation: challenge id, summary: server summary"
     },
     {
       "name": "clear",
@@ -84,13 +85,20 @@
         "machine": "printer",
         "action": "Bed is clear"
       },
-      "params": "printer: id"
+      "params": "printer: id, confirmation: challenge id, summary: server summary"
     },
     {
       "name": "status",
       "label": "Status",
       "kind": "action",
       "effect": "read"
+    },
+    {
+      "name": "review",
+      "label": "Review machine action",
+      "kind": "action",
+      "effect": "read",
+      "params": "action: print|cancel|pause|resume|clear, printer: id, job: id for print/cancel"
     }
   ],
   "surfaces": [

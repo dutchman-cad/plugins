@@ -25,9 +25,9 @@ Panel components:
 | Panel | Bytes | MiB |
 | --- | ---: | ---: |
 | Hello panel | 175,846 | 0.17 |
-| Print | 190,106 | 0.18 |
+| Print | 203,578 | 0.19 |
 
-All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (16),
+All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (22),
 and host/guest lint checks pass. Earlier live checks, against the official SolidCraft 0.22.1 Linux
 release: the Fusion importer converts a synthetic cube and SolidCraft opens it, Pilot
 answers "round all edges 3 mm" with the fillet command, and the hello panel's button
@@ -162,12 +162,22 @@ Panel input is JSON, for example `{"id":"slice"}` then `{"id":"print"}`.
 Choice inputs use an index: `{"id":"status","inputs":{"printer":0}}`.
 `hide` hides both surfaces and drops the timer; `show` starts a fresh interval.
 `quit` stops the plugin. `widget` leaves only the widget visible; `open-panel` opens its panel.
-Physical CLI calls require `printer`, plus `job` for Print and Cancel.
+Each machine action has two steps. Call the `review` read entry with `action`
+(`print`, `cancel`, `pause`, `resume` or `clear`), `printer`, and `job` for Print
+and Cancel. It posts to `/api/v1/confirmations` (mapping `print` to API action
+`start`) and stores and returns the server challenge. The physical entry then takes `printer`, `job` when needed,
+`confirmation` (the challenge ID), and `summary` (the verbatim server sentence).
+The panel fetches these challenges during rendering and shows each summary before
+the button is pressed. Bed is clear has its own challenge and approval; Print
+gets a separate challenge afterward. Expired challenges refresh on rendering;
+the plugin requests wall-clock permission to check `expires_at`.
 Physical actions display the plugin, machine, action and frozen parameters and
 require typing `y` in the terminal. Piped or headless calls are refused even with
 `--yes`. Only tests use `--confirm-physical`, with `DUTCHMAN_PLUGINS_TEST=1` and
 127.0.0.1 services. The host attaches a fresh confirmation header; the component
-never receives it. A failed machine action requires another confirmation.
+never receives it. The physical request sends the challenge ID once. A 409
+refreshes the challenge and asks for another press and approval; no machine
+request is retried automatically. A failed machine action requires another confirmation.
 
 A companion requiring a password can declare a local secret in the manifest and
 receive its value through `--local-secret name=value`. This reference host keeps
