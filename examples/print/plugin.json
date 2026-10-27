@@ -98,7 +98,19 @@
       "label": "Review machine action",
       "kind": "action",
       "effect": "read",
-      "params": "action: print|cancel|pause|resume|clear, printer: id, job: id for print/cancel"
+      "params": "action: print|cancel|pause|resume|clear|stop, printer: id, job: id for print/cancel"
+    },
+    {
+      "name": "stop",
+      "label": "Stop printing",
+      "kind": "action",
+      "effect": "physical",
+      "machine_kind": "printer",
+      "confirm": {
+        "machine": "printer",
+        "action": "Stop printing"
+      },
+      "params": "printer: id, confirmation: challenge id, summary: server summary"
     }
   ],
   "surfaces": [

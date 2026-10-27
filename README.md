@@ -25,9 +25,9 @@ Panel components:
 | Panel | Bytes | MiB |
 | --- | ---: | ---: |
 | Hello panel | 175,846 | 0.17 |
-| Print | 203,981 | 0.19 |
+| Print | 204,070 | 0.19 |
 
-All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (23),
+All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (24),
 and host/guest lint checks pass. Earlier live checks, against the official SolidCraft 0.22.1 Linux
 release: the Fusion importer converts a synthetic cube and SolidCraft opens it, Pilot
 answers "round all edges 3 mm" with the fillet command, and the hello panel's button
@@ -139,12 +139,13 @@ Apache-2.0 WIT/spec, Dutchman adapter, Pilot and synthetic fixture provenance.
 `plugins/print` prepares the selected bodies through a local Print job API v1
 companion, such as [Dutchman Print](https://github.com/dutchman-cad/dutchman/blob/main/docs/print-api.md).
 The panel offers printer choice, optional profile overrides, slicing estimates,
-Print, Pause, Resume, Cancel and Bed is clear. Printer rows show state, progress
+Print, Pause, Resume, Stop, Cancel and Bed is clear. Printer rows show state, progress
 and time remaining. The toolbar widget uses the panel's status item. It refreshes
 every 5 seconds while a printer has a live job and every 30 seconds otherwise.
 A printer in `attention` (waiting for a person) or `busy` (a non-print operation is
 running) shows the companion's reason under its row. Attention also marks the widget.
-Only Cancel is offered for a job in attention; Pause, Resume and Print stay disabled.
+Stop ends whatever job is live, including one started outside Print, and is the only
+action offered in attention. Cancel withdraws a prepared job that has not started.
 
 Set the companion address in this host's command line. It never comes from the
 plugin. Until set, the host returns a named setup error. Only loopback, private,
@@ -166,7 +167,7 @@ Choice inputs use an index: `{"id":"status","inputs":{"printer":0}}`.
 `hide` hides both surfaces and drops the timer; `show` starts a fresh interval.
 `quit` stops the plugin. `widget` leaves only the widget visible; `open-panel` opens its panel.
 Each machine action has two steps. Call the `review` read entry with `action`
-(`print`, `cancel`, `pause`, `resume` or `clear`), `printer`, and `job` for Print
+(`print`, `cancel`, `pause`, `resume`, `clear` or `stop`), `printer`, and `job` for Print
 and Cancel. It posts to `/api/v1/confirmations` (mapping `print` to API action
 `start`) and stores and returns the server challenge. The physical entry then takes `printer`, `job` when needed,
 `confirmation` (the challenge ID), and `summary` (the verbatim server sentence).

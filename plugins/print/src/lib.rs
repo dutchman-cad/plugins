@@ -108,7 +108,7 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 fn review(entry: &str, params: &Value) -> Result<Value, E> {
-    if !["print", "cancel", "pause", "resume", "clear"].contains(&entry) {
+    if !["print", "cancel", "pause", "resume", "clear", "stop"].contains(&entry) {
         return Err(invalid("Unknown confirmation action"));
     }
     let printer = selected(params)?;
@@ -221,7 +221,7 @@ fn execute(entry: &str, params: &Value) -> Result<Value, E> {
             save("job", &result)?;
             Ok(result)
         }
-        "pause" | "resume" | "clear" => {
+        "pause" | "resume" | "clear" | "stop" => {
             machine(&format!("/api/v1/printers/{p}/{entry}"), entry, params)
         }
         _ => Err(invalid("Unknown print entry")),
@@ -337,7 +337,9 @@ impl panel::Guest for Print {
                         _ => {}
                     }
                 }
-                if ["print", "cancel", "pause", "resume", "clear"].contains(&action.id.as_str()) {
+                if ["print", "cancel", "pause", "resume", "clear", "stop"]
+                    .contains(&action.id.as_str())
+                {
                     let params = action_params(&action.id);
                     let challenge = load(&format!("challenge_{}", action.id));
                     if !challenge_matches(&challenge, &params) {
@@ -490,11 +492,13 @@ impl panel::Guest for Print {
         if let Some(p) = current {
             reviewed_button(&mut items, "pause", "Pause", p["state"] == "printing");
             reviewed_button(&mut items, "resume", "Resume", p["state"] == "paused");
+            // Stop ends whatever job is live, including one started outside Print.
+            reviewed_button(&mut items, "stop", "Stop", busy(p));
             reviewed_button(
                 &mut items,
                 "cancel",
                 "Cancel",
-                busy(p) || job["state"] == "ready" && job["printer"] == selected,
+                !busy(p) && job["state"] == "ready" && job["printer"] == selected,
             );
             if p["needs_clearing"] == true {
                 reviewed_button(&mut items, "clear", "Bed is clear", p["state"] == "idle");
