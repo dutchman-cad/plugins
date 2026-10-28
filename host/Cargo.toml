@@ -15,7 +15,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 wasmtime = { version = "50", default-features = false, features = ["anyhow", "async", "component-model", "cranelift", "parallel-compilation", "runtime", "std", "wat"] }
 wasmtime-wasi = { version = "50", default-features = false, features = ["p2"] }
 solidcraft-bridge = { path = "../../dutchman-bridge/rust" }
-sc-pilot = { package = "dutchman-pilot", git = "https://github.com/dutchman-cad/pilot", rev = "79fc02a4884b0810a61f576b07d9a7c990d48f6f", default-features = false, features = ["core"] }
+sc-pilot = { package = "dutchman-pilot", git = "https://github.com/dutchman-cad/pilot", rev = "e6bdf5fcec564367e13dcaeaa31399bb24993018", default-features = false, features = ["core"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
 getrandom = "0.3"
 rayon = "1"
