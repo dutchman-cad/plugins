@@ -75,7 +75,7 @@ reads components from `CARGO_TARGET_DIR` (default `./target`), with Cargo's defa
 job count. Local queued builds continue to use three jobs.
 
 `python3 tests/print_e2e.py` runs one additional smoke test against the real
-Dutchman Print companion pinned by CI at `PRINT_REV=ea343326aa7ed25717f7288ceac020075fc9ec29`.
+Dutchman Print companion pinned by CI at `PRINT_REV=9091efde19a030d8b077d5356041b0e4a0acfc7a`.
 It prepares a synthetic mesh with the built-in simulated backend (no slicer needed),
 checks separate Bed is clear and Print challenges, verifies printing, then uses a
 printer-level Stop challenge and checks cancellation and replay refusal. It uses only

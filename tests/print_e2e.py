@@ -162,8 +162,11 @@ class PrintEndToEnd(unittest.TestCase):
         self.assertEqual(fleet[0]["id"], "bench")
         self.assertEqual(fleet[0]["state"], "idle")
         self.assertTrue(fleet[0]["needs_clearing"])
+        self.assertEqual(fleet[0]["controls"],
+                         ["start", "pause", "resume", "cancel", "stop", "clear"])
         panel = self.host("panel", "print", input='{"id":"status","inputs":{"printer":0}}\nquit\n')
         self.assertIn("Workbench demo", panel.stdout)
+        self.assertNotIn("monitoring only", panel.stdout)
         self.assertIn("Bed is clear", panel.stdout)
         job = self.value(self.entry("slice"))
         self.assertEqual(job["printer"], "bench")

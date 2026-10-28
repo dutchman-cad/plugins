@@ -15,7 +15,7 @@ concurrency:
 env:
   BRIDGE_REV: 45c970bf5f3a702f4aa25a643407424b3fdf268e
   DUTCHMAN_REV: 0df4d2ee9758c6eaf430720a8b5ebc1b963d313c
-  PRINT_REV: ea343326aa7ed25717f7288ceac020075fc9ec29
+  PRINT_REV: 9091efde19a030d8b077d5356041b0e4a0acfc7a
   CARGO_TARGET_DIR: ${{ github.workspace }}/plugins/target
   TMPDIR: ${{ github.workspace }}/plugins/.build-tmp
   CARGO_TERM_COLOR: always
