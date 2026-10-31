@@ -450,8 +450,8 @@ fn reviewed_button_params(
 }
 /// Printers shown per page of the farm overview.
 const OVERVIEW_PAGE: usize = 20;
-/// Counts for the farm summary line. A printer that needs a bed check is counted there and
-/// not as idle; a printing or paused one is counted as printing even if the flag is set.
+/// Counts for the farm summary line. Every printer whose `needs_clearing` is true is counted
+/// as needing a bed check, whatever its state; an idle one is then not also counted as idle.
 #[derive(Debug, PartialEq, Default)]
 struct FarmCounts {
     total: usize,
@@ -470,13 +470,111 @@ fn farm_counts(fleet: &[Value]) -> FarmCounts {
         match p["state"].as_str() {
             Some("printing" | "paused") => c.printing += 1,
             Some("offline" | "error") => c.offline += 1,
-            Some("idle") if p["needs_clearing"] == true => c.bed_check += 1,
-            Some("idle") => c.idle += 1,
-            _ if p["needs_clearing"] == true => c.bed_check += 1,
+            Some("idle") if p["needs_clearing"] != true => c.idle += 1,
+            Some("idle") => {}
+            _ if p["needs_clearing"] == true => {}
             _ => c.other += 1,
+        }
+        if p["needs_clearing"] == true {
+            c.bed_check += 1;
         }
     }
     c
+}
+/// Readable text for a slicing estimate; absent fields are omitted.
+fn estimate_text(e: &Value) -> String {
+    let mut parts = vec![];
+    if let Some(s) = e["seconds"].as_f64().filter(|n| n.is_finite() && *n >= 0.0) {
+        let s = s.round() as u64;
+        parts.push(match (s / 3600, s % 3600 / 60, s % 60) {
+            (0, 0, s) => format!("{s} s"),
+            (0, m, 0) => format!("{m} min"),
+            (0, m, s) => format!("{m} min {s} s"),
+            (h, 0, _) => format!("{h} h"),
+            (h, m, _) => format!("{h} h {m} min"),
+        });
+    }
+    let grams = e["filament_g"].as_f64().filter(|n| n.is_finite());
+    let mm = e["filament_mm"].as_f64().filter(|n| n.is_finite());
+    match (grams, mm) {
+        (Some(g), Some(mm)) => parts.push(format!("{g:.1} g ({mm:.0} mm) of filament")),
+        (Some(g), None) => parts.push(format!("{g:.1} g of filament")),
+        (None, Some(mm)) => parts.push(format!("{mm:.0} mm of filament")),
+        _ => {}
+    }
+    if let Some(n) = e["layers"].as_u64() {
+        parts.push(format!("{n} layer{}", if n == 1 { "" } else { "s" }));
+    }
+    if parts.is_empty() {
+        "no details".into()
+    } else {
+        parts.join(", ")
+    }
+}
+/// An RFC 3339 timestamp to the second, in UTC. Anything else is shown unchanged.
+fn time_text(t: &str) -> String {
+    let b = t.as_bytes();
+    let shape = b.len() >= 19
+        && t.is_char_boundary(19)
+        && b[..19].iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            10 => *c == b'T' || *c == b' ',
+            13 | 16 => *c == b':',
+            _ => c.is_ascii_digit(),
+        });
+    if !shape {
+        return t.into();
+    }
+    let rest = t[19..].trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
+    if !matches!(rest, "Z" | "z" | "+00:00" | "-00:00") {
+        return t.into();
+    }
+    format!("{} {} UTC", &t[..10], &t[11..19])
+}
+/// The printer's name for an id, or the id itself when the printer is not listed.
+fn printer_name(fleet: &[Value], id: &str) -> String {
+    fleet
+        .iter()
+        .find(|p| p["id"] == id)
+        .and_then(|p| p["name"].as_str())
+        .unwrap_or(id)
+        .into()
+}
+/// A printer's status line: progress and time left only when the companion reports them.
+fn printer_status_line(p: &Value) -> String {
+    let mut line = format!(
+        "{}: {}",
+        p["name"].as_str().unwrap_or("Printer"),
+        p["state"].as_str().unwrap_or("unknown")
+    );
+    if let Some(n) = p["progress"].as_f64().filter(|n| n.is_finite()) {
+        line.push_str(&format!(" — {:.0}%", n.clamp(0.0, 1.0) * 100.0));
+    }
+    if let Some(s) = p["seconds_left"].as_u64() {
+        line.push_str(&format!(" — {s} s left"));
+    }
+    line
+}
+/// One recent-prints line. A bed-clear audit record reads as an acknowledgement.
+fn history_line(record: &Value) -> String {
+    let time = record["ended_at"]
+        .as_str()
+        .map(time_text)
+        .unwrap_or_else(|| "unknown time".into());
+    if record["job_name"].is_null() && record["outcome"] == "bed_clear" {
+        return format!("Bed check acknowledged — {time}");
+    }
+    let duration = record["duration_seconds"]
+        .as_u64()
+        .map(|n| format!("{n} s"))
+        .unwrap_or_else(|| "unknown duration".into());
+    format!(
+        "{} — {} — {} — {}",
+        record["job_name"].as_str().unwrap_or("Bed clearance"),
+        record["outcome"].as_str().unwrap_or("unknown"),
+        time,
+        duration
+    )
 }
 fn farm_summary(c: &FarmCounts, queued: Option<usize>) -> String {
     let mut line = format!(
@@ -585,7 +683,7 @@ fn render_overview(items: &mut Vec<panel::Item>, fleet: &[Value], selected: &Val
         ));
     }
 }
-fn render_farm(items: &mut Vec<panel::Item>, job: &Value, selected: &Value) {
+fn render_farm(items: &mut Vec<panel::Item>, job: &Value, selected: &Value, fleet: &[Value]) {
     items.push(panel::Item::Heading("Farm queue".into()));
     let ready = job["state"] == "ready";
     items.push(button(
@@ -629,8 +727,18 @@ fn render_farm(items: &mut Vec<panel::Item>, job: &Value, selected: &Value) {
                 "{}. {} — target: {} — proposed printer: {}",
                 position + 1,
                 name,
-                entry["target"].as_str().unwrap_or("any"),
-                proposal["printer"].as_str().unwrap_or("none")
+                entry["target"]
+                    .as_str()
+                    .map(|t| if t == "any" {
+                        t.into()
+                    } else {
+                        printer_name(fleet, t)
+                    })
+                    .unwrap_or_else(|| "any".into()),
+                proposal["printer"]
+                    .as_str()
+                    .map(|id| printer_name(fleet, id))
+                    .unwrap_or_else(|| "none".into())
             )));
             for reason in [entry["reason"].as_str(), proposal["reason"].as_str()]
                 .into_iter()
@@ -691,17 +799,7 @@ fn render_farm(items: &mut Vec<panel::Item>, job: &Value, selected: &Value) {
                         items.push(text("No recent prints.".into()));
                     }
                     for record in records.iter().take(5) {
-                        let duration = record["duration_seconds"]
-                            .as_u64()
-                            .map(|n| format!("{n} s"))
-                            .unwrap_or_else(|| "unknown duration".into());
-                        items.push(text(format!(
-                            "{} — {} — {} — {}",
-                            record["job_name"].as_str().unwrap_or("Bed clearance"),
-                            record["outcome"].as_str().unwrap_or("unknown"),
-                            record["ended_at"].as_str().unwrap_or("unknown time"),
-                            duration
-                        )));
+                        items.push(text(history_line(record)));
                     }
                 } else {
                     items.push(text("Invalid print history".into()));
@@ -944,7 +1042,10 @@ impl panel::Guest for Print {
         }
         let job = load("job");
         if !job.is_null() {
-            items.push(text(format!("Estimate: {}", job["estimate"])));
+            items.push(text(format!(
+                "Estimate: {}",
+                estimate_text(&job["estimate"])
+            )));
         }
         items.push(button("slice", "Slice selection", current.is_some()));
         reviewed_button(
@@ -974,19 +1075,7 @@ impl panel::Guest for Print {
             }
         }
         for p in fleet.iter().take(100) {
-            let progress = p["progress"]
-                .as_f64()
-                .map(|n| format!("{:.0}", n.clamp(0.0, 1.0) * 100.0))
-                .unwrap_or_else(|| "?".into());
-            let seconds = p["seconds_left"]
-                .as_u64()
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "?".into());
-            items.push(text(format!(
-                "{}: {} — {progress}% — {seconds} s left",
-                p["name"].as_str().unwrap_or("Printer"),
-                p["state"].as_str().unwrap_or("unknown")
-            )));
+            items.push(text(printer_status_line(p)));
             // Say why a printer needs a person or cannot take a job right now.
             if let (Some("attention" | "busy" | "error"), Some(detail)) =
                 (p["state"].as_str(), p["detail"].as_str())
@@ -994,7 +1083,7 @@ impl panel::Guest for Print {
                 items.push(text(short(detail)));
             }
         }
-        render_farm(&mut items, &job, &selected);
+        render_farm(&mut items, &job, &selected, &fleet);
         items
     }
     fn markers() -> Vec<panel::Marker> {
@@ -1050,16 +1139,77 @@ mod tests {
                 total: 7,
                 printing: 2,
                 idle: 1,
-                bed_check: 1,
+                bed_check: 2,
                 offline: 2,
                 other: 1
             }
         );
         assert_eq!(
             farm_summary(&c, Some(3)),
-            "7 printers: 2 printing, 1 idle, 1 need a bed check, 2 offline or error, 1 other — queue length 3"
+            "7 printers: 2 printing, 1 idle, 2 need a bed check, 2 offline or error, 1 other — queue length 3"
         );
         assert!(farm_summary(&FarmCounts::default(), None).ends_with("queue length unknown"));
+    }
+
+    #[test]
+    fn estimate_text_is_readable_and_omits_absent_fields() {
+        let e = json!({"filament_g":1.233,"filament_mm":123.3,"layers":1,"seconds":61});
+        assert_eq!(
+            estimate_text(&e),
+            "1 min 1 s, 1.2 g (123 mm) of filament, 1 layer"
+        );
+        assert_eq!(
+            estimate_text(&json!({"seconds": 3720, "layers": 40})),
+            "1 h 2 min, 40 layers"
+        );
+        assert_eq!(estimate_text(&json!({"seconds": 45})), "45 s");
+        assert_eq!(estimate_text(&json!({"seconds": 120})), "2 min");
+        assert_eq!(
+            estimate_text(&json!({"filament_g": 2.0})),
+            "2.0 g of filament"
+        );
+        assert_eq!(estimate_text(&json!({})), "no details");
+    }
+
+    #[test]
+    fn time_text_shows_utc_to_the_second() {
+        assert_eq!(
+            time_text("2026-10-31T09:11:11.740519658Z"),
+            "2026-10-31 09:11:11 UTC"
+        );
+        assert_eq!(time_text("2026-10-31T09:11:11Z"), "2026-10-31 09:11:11 UTC");
+        assert_eq!(
+            time_text("2026-10-31T09:11:11+02:00"),
+            "2026-10-31T09:11:11+02:00"
+        );
+        assert_eq!(time_text("yesterday"), "yesterday");
+    }
+
+    #[test]
+    fn names_status_and_history_lines() {
+        let fleet = vec![json!({"id": "shelf", "name": "Shelf A1"})];
+        assert_eq!(printer_name(&fleet, "shelf"), "Shelf A1");
+        assert_eq!(printer_name(&fleet, "gone"), "gone");
+        assert_eq!(
+            printer_status_line(&json!({"name": "Shelf A1", "state": "idle"})),
+            "Shelf A1: idle"
+        );
+        assert_eq!(
+            printer_status_line(
+                &json!({"name": "A", "state": "printing", "progress": 0.5, "seconds_left": 30})
+            ),
+            "A: printing — 50% — 30 s left"
+        );
+        assert_eq!(
+            history_line(&json!({"outcome": "bed_clear", "ended_at": "2026-10-31T09:11:11.7Z"})),
+            "Bed check acknowledged — 2026-10-31 09:11:11 UTC"
+        );
+        assert_eq!(
+            history_line(
+                &json!({"job_name": "P", "outcome": "done", "ended_at": "2026-10-31T09:11:11Z", "duration_seconds": 5})
+            ),
+            "P — done — 2026-10-31 09:11:11 UTC — 5 s"
+        );
     }
 
     #[test]
