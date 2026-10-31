@@ -33,20 +33,20 @@ jobs:
         working-directory: plugins
     steps:
       - name: Checkout plugins
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           path: plugins
           persist-credentials: false
       - name: Checkout Bridge
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: dutchman-cad/bridge
           ref: ${{ env.BRIDGE_REV }}
           path: dutchman-bridge
           persist-credentials: false
       - name: Checkout Dutchman
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: dutchman-cad/dutchman
           ref: ${{ env.DUTCHMAN_REV }}
@@ -54,7 +54,7 @@ jobs:
           persist-credentials: false
       - name: Checkout Print
         if: matrix.check == 'components'
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: dutchman-cad/print
           ref: ${{ env.PRINT_REV }}
@@ -68,7 +68,7 @@ jobs:
           targets: wasm32-wasip2
           components: rustfmt, clippy
       - name: Cache Rust builds
-        uses: Swatinem/rust-cache@bc2d2e71bd35c5549942babaa51a89c586b981d1 # v2.8.1
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           workspaces: plugins -> target
           key: ${{ matrix.check }}-${{ env.BRIDGE_REV }}-${{ env.DUTCHMAN_REV }}-${{ env.PRINT_REV }}
