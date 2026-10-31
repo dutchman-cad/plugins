@@ -120,15 +120,10 @@ fn now() -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
-fn challenge_key(entry: &str, params: &Value) -> String {
-    if entry == "dispatch" {
-        format!(
-            "challenge_dispatch_{}",
-            params["queue"].as_str().unwrap_or("")
-        )
-    } else {
-        format!("challenge_{entry}")
-    }
+// One reviewed challenge per action. A dispatch challenge records its queue entry, and
+// challenge_matches checks it, so entry ids (which store keys cannot hold) stay out of keys.
+fn challenge_key(entry: &str, _params: &Value) -> String {
+    format!("challenge_{entry}")
 }
 fn queue_id(params: &Value) -> Result<&str, E> {
     params["queue"]
@@ -253,7 +248,9 @@ fn execute(entry: &str, params: &Value) -> Result<Value, E> {
         }
         "queue-remove" => {
             let path = format!("/api/v1/queue/{}", encode(queue_id(params)?));
-            save(&challenge_key("dispatch", params), &Value::Null)?;
+            if load(&challenge_key("dispatch", params))["queue"] == params["queue"] {
+                save(&challenge_key("dispatch", params), &Value::Null)?;
+            }
             let (status, value) = request_method(&path, net::Method::Delete, false, None)?;
             return checked(status, value);
         }
@@ -873,10 +870,8 @@ mod tests {
             challenge_key("dispatch", &params),
             challenge_key("print", &params)
         );
-        assert_ne!(
-            challenge_key("dispatch", &params),
-            challenge_key("dispatch", &json!({"queue": "other"}))
-        );
+        // Entry ids such as "entry/one" never reach a store key.
+        assert_eq!(challenge_key("dispatch", &params), "challenge_dispatch");
     }
 
     #[test]
