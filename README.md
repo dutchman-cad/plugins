@@ -74,11 +74,12 @@ In CI, or when `buildq` is unavailable, the build script uses plain Cargo and
 reads components from `CARGO_TARGET_DIR` (default `./target`), with Cargo's default
 job count. Local queued builds continue to use three jobs.
 
-`python3 tests/print_e2e.py` runs one additional smoke test against the real
-Dutchman Print companion pinned by CI at `PRINT_REV=9091efde19a030d8b077d5356041b0e4a0acfc7a`.
+`python3 tests/print_e2e.py` runs additional smoke tests against the real
+Dutchman Print companion pinned by CI at `PRINT_REV=84f18e452da39957a7bf607d613025c4e73fccf9`.
 It prepares a synthetic mesh with the built-in simulated backend (no slicer needed),
 checks separate Bed is clear and Print challenges, verifies printing, then uses a
-printer-level Stop challenge and checks cancellation and replay refusal. It uses only
+printer-level Stop challenge and checks cancellation and replay refusal. It also checks
+queue add/list/move/remove, confirmed dispatch and recent history. It uses only
 127.0.0.1, starts and shuts down its own companion, and requires no printer. CI builds
 `dutchman-print` alongside the host; local runs can set `DUTCHMAN_PRINT_BIN` and
 `DUTCHMAN_PLUGINS_BIN` to their release binaries. Set `TMPDIR` to a writable build
@@ -159,6 +160,24 @@ A printer in `attention` (waiting for a person) or `busy` (a non-print operation
 running) shows the companion's reason under its row. Attention also marks the widget.
 Stop ends whatever job is live, including one started outside Print, and is the only
 action offered in attention. Cancel withdraws a prepared job that has not started.
+
+The panel's Farm queue adds a prepared job for the selected printer or any compatible
+printer. Rows show FIFO position, job name, target, proposed printer and refusal reasons,
+with Remove and Move up controls. Proposals are advisory and start nothing. Dispatch
+appears only with a proposed printer and shows a fresh Start summary for personal
+approval, using the same physical confirmation flow as Print. Bed clearance needs its
+own separate approval. Each challenge is sent once; dispatch is never retried. Failed
+or attempted entries keep their printer reserved until removed: check the tracked job
+and printer first. Removing membership does not cancel a print or delete its job record.
+The queue is paged in groups of 20. Recent prints shows the selected printer's
+newest five history records with job name, outcome, ended time and duration (including
+bed-clear audit records, whose duration is unknown).
+
+The read entries `queue`, `queue-add` (`job`, `target`), `queue-remove` (`queue`) and
+`queue-move` (`queue`, zero-based `position`) also expose queue management.
+For dispatch, call `review` with `action: "dispatch"`, `queue` and the proposed `printer`.
+Then call the physical `dispatch` entry with that queue id, the returned printer and
+bound job id, challenge `confirmation` and verbatim `summary`.
 
 Set the companion address in this host's command line. It never comes from the
 plugin. Until set, the host returns a named setup error. Only loopback, private,

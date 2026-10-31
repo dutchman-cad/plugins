@@ -49,6 +49,8 @@ class PrintSmoke(unittest.TestCase):
         self.controls = ["start", "pause", "resume", "cancel", "stop", "clear"]
         self.error = None
         self.extra_printers = []
+        self.queue = []
+        self.history = []
         case = self
 
         class API(http.server.BaseHTTPRequestHandler):
@@ -73,6 +75,16 @@ class PrintSmoke(unittest.TestCase):
                 case.requests.append((time.monotonic(), "GET", self.path, {k.lower(): v for k, v in self.headers.items()}, b""))
                 if case.error:
                     return self.reply(503, {"error": case.error})
+                if self.path == "/api/v1/queue":
+                    return self.reply(200, case.queue)
+                if self.path == "/api/v1/queue/proposals":
+                    return self.reply(200, [{"id": e["id"], "printer": None if e["attempted"] or case.needs_clearing else "bench",
+                                             "reason": e["reason"]} for e in case.queue])
+                if self.path.startswith("/api/v1/history?"):
+                    query = parse_qs(urlsplit(self.path).query)
+                    return self.reply(200, [r for r in case.history if r["printer"] == query["printer"][0]][:int(query["limit"][0])])
+                if self.path == "/api/v1/jobs/job%2Fone":
+                    return self.reply(200, self.job(case.job_state))
                 if self.path == "/api/v1/printers":
                     return self.reply(200, [{"id": "bench", "name": "Workbench", "model": "Fake",
                                              "state": case.state, "progress": case.progress,
@@ -81,6 +93,12 @@ class PrintSmoke(unittest.TestCase):
                                              "detail": case.detail,
                                              **({"controls": case.controls} if case.controls is not None else {})}] + case.extra_printers)
                 self.reply(404, {"error": "Job expired."})
+
+            def do_DELETE(self):
+                case.requests.append((time.monotonic(), "DELETE", self.path, {}, b""))
+                entry_id = unquote(self.path.rsplit("/", 1)[-1])
+                case.queue[:] = [e for e in case.queue if e["id"] != entry_id]
+                self.reply(204, None)
 
             def do_POST(self):
                 body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
@@ -99,6 +117,28 @@ class PrintSmoke(unittest.TestCase):
                     return self.reply(400, {"error": "Send a JSON object."})
                 if not isinstance(data, dict):
                     return self.reply(400, {"error": "Send a JSON object."})
+                queue_entry = None
+                if path == "/api/v1/queue":
+                    entry = dict(id=f"entry/{len(case.queue) + 1}", job=data["job"], target=data["target"],
+                                 profile=None, kind=None, reason=None, prepared=None, attempted=False)
+                    case.queue.append(entry)
+                    return self.reply(201, entry)
+                if path.startswith("/api/v1/queue/"):
+                    entry_id = unquote(path.split("/")[-2])
+                    queue_entry = next(e for e in case.queue if e["id"] == entry_id)
+                    operation = path.rsplit("/", 1)[-1]
+                    if operation == "move":
+                        case.queue.remove(queue_entry)
+                        case.queue.insert(data["position"], queue_entry)
+                        return self.reply(200, case.queue)
+                    if operation == "confirmations":
+                        queue_entry["prepared"] = "job/one"
+                        path = "/api/v1/confirmations"
+                        data = dict(action="start", printer=data["printer"], job="job/one")
+                    elif operation == "dispatch":
+                        if queue_entry["attempted"]:
+                            return self.reply(409, {"error": "Dispatch was already attempted."})
+                        path = "/api/v1/jobs/job%2Fone/start"
                 def observation():
                     return {"state": case.state, "detail": case.detail, "job_id": case.live_job_id,
                             "job_name": case.live_job_name, "progress": int(case.progress * 100) / 100,
@@ -149,6 +189,12 @@ class PrintSmoke(unittest.TestCase):
                     return self.reply(409, {"error": "The printer changed since you confirmed; confirm again."})
                 challenge["used"] = True
                 case.tokens.add(values[0])
+                if queue_entry is not None:
+                    queue_entry["attempted"] = True
+                    if case.backend_failure:
+                        queue_entry["reason"] = "Backend unavailable."
+                    else:
+                        case.queue.remove(queue_entry)
                 if case.backend_failure:
                     return self.reply(503, {"error": "Backend unavailable."})
                 if action == "clear":
@@ -249,6 +295,98 @@ class PrintSmoke(unittest.TestCase):
             return response.status, response.read()
         finally:
             client.close()
+
+    def queue_command(self, action, params=None, **kwargs):
+        return self.run_host("run", "print", action, json.dumps(params or {}), **kwargs)
+
+    def queue_review(self, entry_id):
+        run = self.queue_command("review", dict(action="dispatch", queue=entry_id, printer="bench"))
+        challenge = json.loads(run.stdout.strip().splitlines()[-1])
+        return dict(queue=entry_id, printer=challenge["printer"], job=challenge["job"],
+                    confirmation=challenge["id"], summary=challenge["summary"])
+
+    def test_queue_management_history_and_unconfirmed_dispatch(self):
+        self.queue_command("slice")
+        self.queue_command("queue-add", {"target": "bench"})
+        self.queue_command("queue-add", {"target": "any"})
+        self.assertEqual([e["target"] for e in self.queue], ["bench", "any"])
+        self.queue_command("queue-move", {"queue": "entry/2", "position": 0})
+        self.assertEqual(self.queue[0]["id"], "entry/2")
+        self.assertIn('entry/2', self.queue_command("queue").stdout)
+        self.queue_command("queue-remove", {"queue": "entry/1"})
+        self.assertEqual(len(self.queue), 1)
+        self.needs_clearing = False
+        self.history = [dict(printer="bench", job_name=f"Part {n}", outcome="done",
+                             ended_at="2026-10-30T12:00:00Z", duration_seconds=120) for n in range(6)]
+        run = self.run_host("panel", "print", input='{"id":"dispatch:entry/2"}\nquit\n')
+        for label in ("1. Selection", "target: any", "proposed printer: bench", "Recent prints",
+                      "Part 0", "Part 4", "done", "2026-10-30T12:00:00Z", "120 s"):
+            self.assertIn(label, run.stdout)
+        self.assertNotIn("Part 5", run.stdout)
+        self.assertFalse(any(r[2].endswith("/dispatch") for r in self.requests))
+        self.assertFalse(any("plugin-confirmation" in r[3] for r in self.requests))
+
+    def test_panel_queue_actions_and_paging(self):
+        self.run_host("panel", "print", input='{"id":"slice"}\n{"id":"queue-this"}\nquit\n')
+        self.assertEqual(self.queue[0]["target"], "bench")
+        self.run_host("panel", "print", input='{"id":"remove:entry/1"}\n{"id":"queue-any"}\nquit\n')
+        self.assertEqual(self.queue[0]["target"], "any")
+        self.assertTrue(any(r[1:3] == ("DELETE", "/api/v1/queue/entry%2F1") for r in self.requests))
+        self.queue_command("queue-add", {"target": "bench"})
+        self.run_host("panel", "print", input='{"id":"up:entry/2"}\nquit\n')
+        self.assertEqual(self.queue[0]["target"], "bench")
+        self.queue = [dict(id=f"entry/{n}", job="job/one", target="any", reason=None,
+                           prepared=None, attempted=False) for n in range(1, 22)]
+        run = self.run_host("panel", "print", input='{"id":"queue-next"}\nquit\n')
+        self.assertIn("Queue page 1 of 2", run.stdout)
+        self.assertIn("Queue page 2 of 2", run.stdout)
+        self.assertIn('id: "remove:entry/21"', run.stdout)
+        self.assertFalse(any("plugin-confirmation" in r[3] for r in self.requests))
+
+    def test_dispatch_changed_observation_needs_another_approval(self):
+        self.needs_clearing = False
+        self.queue_command("slice")
+        self.queue_command("queue-add")
+        stale = self.queue_review("entry/1")
+        self.change_on_start = True
+        self.queue_command("dispatch", stale, confirm=True, ok=False)
+        self.queue_command("dispatch", stale, confirm=True, ok=False)
+        self.assertEqual(len([r for r in self.requests if r[2].endswith("/dispatch")]), 1)
+        fresh = self.queue_review("entry/1")
+        self.assertNotEqual(fresh["confirmation"], stale["confirmation"])
+        # Reviewing never starts it; a separate confirmation is still needed.
+        self.assertEqual(self.state, "idle")
+        self.queue_command("dispatch", fresh, ok=False)
+        self.assertEqual(self.state, "idle")
+        self.queue_command("dispatch", fresh, confirm=True)
+        self.assertEqual(self.state, "printing")
+        self.assertEqual(self.queue, [])
+        self.queue_command("dispatch", fresh, confirm=True, ok=False)
+        dispatches = [r for r in self.requests if r[2].endswith("/dispatch")]
+        self.assertEqual(len(dispatches), 2)
+        self.assertNotEqual(dispatches[0][3]["plugin-confirmation"], dispatches[1][3]["plugin-confirmation"])
+
+    def test_dispatch_fresh_binding_and_single_attempt(self):
+        self.needs_clearing = False
+        self.queue_command("slice")
+        self.queue_command("queue-add")
+        self.queue_command("dispatch", dict(queue="entry/1", printer="bench"), confirm=True, ok=False)
+        self.assertFalse(any(r[2].endswith("/dispatch") for r in self.requests))
+        params = self.queue_review("entry/1")
+        for changed in (dict(queue="another"), dict(job="another"), dict(printer="another"), dict(summary="changed")):
+            self.queue_command("dispatch", dict(params, **changed), confirm=True, ok=False)
+        self.assertFalse(any(r[2].endswith("/dispatch") for r in self.requests))
+        self.backend_failure = True
+        self.queue_command("dispatch", params, confirm=True, ok=False)
+        self.queue_command("dispatch", params, confirm=True, ok=False)
+        dispatches = [r for r in self.requests if r[2].endswith("/dispatch")]
+        self.assertEqual(len(dispatches), 1)
+        self.assertRegex(dispatches[0][3]["plugin-confirmation"], "^[0-9a-f]{64}$")
+        self.assertTrue(self.queue[0]["attempted"])
+        run = self.run_host("panel", "print", input="quit\n")
+        self.assertIn("Backend unavailable.", run.stdout)
+        self.assertIn("reserved until removed", run.stdout)
+        self.assertNotIn('id: "dispatch:entry/1"', run.stdout)
 
     def test_challenge_binding_expiry_replay_and_header(self):
         self.run_host("run", "print", "slice")
@@ -387,7 +525,7 @@ class PrintSmoke(unittest.TestCase):
         self.assertEqual(self.state, "idle")
 
     def panel_buttons(self, output):
-        return dict(re.findall(r'Button \{\s*id: "([^"]+)",\s*label: "[^"]+",\s*enabled: (true|false)', output))
+        return {k: v for k, v in re.findall(r'Button \{\s*id: "([^"]+)",\s*label: "[^"]+",\s*enabled: (true|false)', output) if not k.startswith("queue-")}
 
     def reviewed_actions(self):
         return [json.loads(r[4])["action"] for r in self.requests if r[2] == "/api/v1/confirmations"]
@@ -498,20 +636,20 @@ class PrintSmoke(unittest.TestCase):
             process.stdin.write("widget\n")
             process.stdin.flush()
             started = self.requests[0][0]
-            while len([r for r in self.requests if r[1] == "GET"]) < 2 and time.monotonic() < started + 8:
+            while len([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"]) < 2 and time.monotonic() < started + 8:
                 time.sleep(0.05)
-            self.assertEqual(len([r for r in self.requests if r[1] == "GET"]), 2)
-            self.assertGreaterEqual([r for r in self.requests if r[1] == "GET"][1][0] - started, 5)
+            self.assertEqual(len([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"]), 2)
+            self.assertGreaterEqual([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"][1][0] - started, 5)
             process.stdin.write("hide\n")
             process.stdin.flush()
             time.sleep(5.3)
-            self.assertEqual(len([r for r in self.requests if r[1] == "GET"]), 2)
+            self.assertEqual(len([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"]), 2)
             process.stdin.write("show\n")
             process.stdin.flush()
             time.sleep(1)
-            self.assertEqual(len([r for r in self.requests if r[1] == "GET"]), 2)
+            self.assertEqual(len([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"]), 2)
             time.sleep(4.3)
-            self.assertEqual(len([r for r in self.requests if r[1] == "GET"]), 3)
+            self.assertEqual(len([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"]), 3)
             _, stderr = process.communicate("quit\n", timeout=15)
             self.assertEqual(process.returncode, 0, stderr)
         finally:
@@ -530,11 +668,11 @@ class PrintSmoke(unittest.TestCase):
             self.assertTrue(self.requests)
             started = self.requests[0][0]
             time.sleep(5.2)
-            self.assertEqual(len([r for r in self.requests if r[1] == "GET"]), 1)
-            while len([r for r in self.requests if r[1] == "GET"]) < 2 and time.monotonic() < started + 33:
+            self.assertEqual(len([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"]), 1)
+            while len([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"]) < 2 and time.monotonic() < started + 33:
                 time.sleep(0.1)
-            self.assertEqual(len([r for r in self.requests if r[1] == "GET"]), 2)
-            self.assertGreaterEqual([r for r in self.requests if r[1] == "GET"][1][0] - started, 30)
+            self.assertEqual(len([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"]), 2)
+            self.assertGreaterEqual([r for r in self.requests if r[1] == "GET" and r[2] == "/api/v1/printers"][1][0] - started, 30)
             stdout, stderr = process.communicate("quit\n", timeout=15)
             self.assertEqual(process.returncode, 0, stderr)
             self.assertIn("1 printers idle", stdout)

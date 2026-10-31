@@ -98,7 +98,7 @@
       "label": "Review machine action",
       "kind": "action",
       "effect": "read",
-      "params": "action: print|cancel|pause|resume|clear|stop, printer: id, job: id for print/cancel"
+      "params": "action: print|dispatch|cancel|pause|resume|clear|stop, printer: id, job: id for print/cancel, queue: entry id for dispatch"
     },
     {
       "name": "stop",
@@ -111,6 +111,42 @@
         "action": "Stop printing"
       },
       "params": "printer: id, confirmation: challenge id, summary: server summary"
+    },
+    {
+      "name": "queue",
+      "label": "List queue",
+      "kind": "action",
+      "effect": "read"
+    },
+    {
+      "name": "queue-add",
+      "label": "Add to queue",
+      "kind": "action",
+      "effect": "read"
+    },
+    {
+      "name": "queue-remove",
+      "label": "Remove from queue",
+      "kind": "action",
+      "effect": "read"
+    },
+    {
+      "name": "queue-move",
+      "label": "Move queued job",
+      "kind": "action",
+      "effect": "read"
+    },
+    {
+      "name": "dispatch",
+      "label": "Dispatch queued print",
+      "kind": "action",
+      "effect": "physical",
+      "machine_kind": "printer",
+      "confirm": {
+        "machine": "printer",
+        "action": "Start queued print"
+      },
+      "params": "queue: entry id, printer: id, job: bound job id, confirmation: challenge id, summary: server summary"
     }
   ],
   "surfaces": [
