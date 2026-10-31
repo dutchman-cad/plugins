@@ -166,6 +166,14 @@ running) shows the companion's reason under its row. Attention also marks the wi
 Stop ends whatever job is live, including one started outside Print, and is the only
 action offered in attention. Cancel withdraws a prepared job that has not started.
 
+The panel opens with a Farm overview: a summary line (printer count, how many are
+printing, idle, need a bed check, or are offline or in error, and the queue length) and one
+line per printer with its state, job name and progress while printing, "needs bed check"
+when the companion reports `needs_clearing`, and the queue entry proposed for it. Each line
+has a Select button that makes that printer the panel's selected printer. The overview only
+reads; it never sends a machine action, and every action stays in the reviewed flows below.
+Printers are paged in groups of 20.
+
 The panel's Farm queue adds a prepared job for the selected printer or any compatible
 printer. Rows show FIFO position, job name, target, proposed printer and refusal reasons,
 with Remove and Move up controls. Proposals are advisory and start nothing. Dispatch
