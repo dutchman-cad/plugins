@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use dutchman_plugins::{manifest::Manifest, runtime::Plugin};
 use std::{io::Write, path::PathBuf};
+mod paths;
 #[derive(Parser)]
 #[command(about = "A standalone SolidCraft component plugin reference host")]
 struct Cli {
@@ -25,6 +26,16 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Run the bundled Print companion; arguments follow `--`.
+    Companion {
+        #[arg(last = true)]
+        args: Vec<std::ffi::OsString>,
+    },
+    /// Start an installed SolidCraft; arguments follow `--`.
+    Solidcraft {
+        #[arg(last = true)]
+        args: Vec<std::ffi::OsString>,
+    },
     List,
     Check {
         dir: PathBuf,
@@ -44,50 +55,17 @@ enum Command {
         plugin: PathBuf,
     },
 }
-/// Folders that may hold example plugins, in order: DUTCHMAN_PLUGINS_EXAMPLES, an `examples`
-/// folder beside the binary or two levels up (a `target/release` build or the CI artifact), then
-/// the source tree the host was built from.
 fn examples_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(dir) = std::env::var_os("DUTCHMAN_PLUGINS_EXAMPLES") {
-        roots.push(dir.into());
-    }
-    if let Some(bin) = std::env::current_exe()
-        .ok()
-        .and_then(|e| e.parent().map(PathBuf::from))
-    {
-        roots.push(bin.join("examples"));
-        roots.push(bin.join("../../examples"));
-    }
-    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples"));
-    roots
+    paths::examples_roots(
+        std::env::var_os("DUTCHMAN_PLUGINS_EXAMPLES").map(PathBuf::from),
+        std::env::current_exe().ok().as_deref(),
+    )
 }
-/// The first root that holds a plugin manifest. Cargo's own `target/release/examples`
-/// folder exists in every build but holds none.
 fn examples_root() -> PathBuf {
-    let roots = examples_roots();
-    let holds_plugins = |root: &PathBuf| {
-        std::fs::read_dir(root).is_ok_and(|entries| {
-            entries
-                .flatten()
-                .any(|e| e.path().join("plugin.json").is_file())
-        })
-    };
-    roots
-        .iter()
-        .find(|root| holds_plugins(root))
-        .cloned()
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples"))
+    paths::examples_root(&examples_roots())
 }
 fn folder(p: PathBuf) -> PathBuf {
-    if p.is_dir() {
-        return p;
-    }
-    examples_roots()
-        .into_iter()
-        .map(|root| root.join(&p))
-        .find(|dir| dir.join("plugin.json").is_file())
-        .unwrap_or_else(|| examples_root().join(p))
+    paths::plugin_folder(p, &examples_roots())
 }
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -117,6 +95,8 @@ async fn main() -> Result<()> {
         settings.secrets.insert(name.into(), value.into());
     }
     match cli.command {
+        Command::Companion { args } => paths::launch("dutchman-print", "DUTCHMAN_PRINT_BIN", args)?,
+        Command::Solidcraft { args } => paths::launch("solidcraft", "SOLIDCRAFT_BIN", args)?,
         Command::List => {
             let root = examples_root();
             let mut extensions = std::collections::BTreeMap::new();
@@ -203,4 +183,59 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn readme_commands_match_cli() -> Result<()> {
+        for args in [
+            vec!["dutchman-plugins", "list"],
+            vec!["dutchman-plugins", "--yes", "panel", "print"],
+            vec![
+                "dutchman-plugins",
+                "--yes",
+                "--local",
+                "dutchman-print=http://127.0.0.1:8730",
+                "panel",
+                "print",
+            ],
+            vec![
+                "dutchman-plugins",
+                "companion",
+                "--",
+                "--config",
+                "config.toml",
+                "serve",
+                "--listen",
+                "127.0.0.1:8730",
+                "--data-dir",
+                "private-jobs",
+            ],
+            vec!["dutchman-plugins", "solidcraft", "--", "--control", "7878"],
+        ] {
+            Cli::try_parse_from(args)?;
+        }
+        let cli = Cli::try_parse_from([
+            "dutchman-plugins",
+            "companion",
+            "--",
+            "--config",
+            "a folder/config.toml",
+        ])?;
+        if let Command::Companion { args } = cli.command {
+            assert_eq!(
+                args,
+                vec![
+                    std::ffi::OsString::from("--config"),
+                    std::ffi::OsString::from("a folder/config.toml")
+                ]
+            );
+        } else {
+            anyhow::bail!("Expected companion command");
+        }
+        Ok(())
+    }
 }

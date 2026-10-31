@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #![allow(clippy::unwrap_used)]
+#![cfg(target_os = "linux")]
 
 /// Runs the component integration suite after build-plugins.sh installs examples.
 #[test]

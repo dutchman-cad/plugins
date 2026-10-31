@@ -27,14 +27,14 @@ Panel components:
 | Hello panel | 175,846 | 0.17 |
 | Print | 205,364 | 0.20 |
 
-All four importers and both panels fit the 16,777,216-byte cap. Release host tests (24), smoke tests (30),
-and host/guest lint checks pass. Earlier live checks, against the official SolidCraft 0.22.1 Linux
-release: the Fusion importer converts a synthetic cube and SolidCraft opens it, Pilot
+All four importers and both panels fit the 16,777,216-byte cap. CI runs the host's unit tests
+on Linux, macOS and Windows, plus Linux smoke tests and host/guest lint checks.
+Earlier live checks, against the official SolidCraft 0.22.1 Linux release: the Fusion importer converts a synthetic cube and SolidCraft opens it, Pilot
 answers "round all edges 3 mm" with the fillet command, and the hello panel's button
 creates a box (3 of 3 pass). SPEC-NOTES.md records where the draft interface was
 unclear and what this host chose.
 
-Requires sibling checkouts of [dutchman-bridge](https://github.com/dutchman-cad/bridge) and
+Building from source requires sibling checkouts of [dutchman-bridge](https://github.com/dutchman-cad/bridge) and
 [dutchman](https://github.com/dutchman-cad/dutchman). Pilot's portable core comes from
 [dutchman-cad/pilot](https://github.com/dutchman-cad/pilot) at
 `c496904e0a681aa19f84353f889f6aacaa594d86` (v0.1.0-beta.8), for both the host and Pilot plugin. Rust must support Wasmtime 50
@@ -47,12 +47,64 @@ CI pins the sibling checkouts in `.github/workflows/ci.yml`, under the workflow
 update its commit SHA and run CI. The checkout directories are `../dutchman-bridge`,
 `../dutchman`, and `../print`, beside this repository.
 
+## Download and run
+
+Download a ready-to-run package from the CI run's **Artifacts** section. Choose
+`dutchman-plugins-<OS>-<architecture>` for your system (for example Linux-X64,
+macOS-ARM64 or Windows-X64). Packages are kept for 14 days. Unzip the download,
+then unpack the `.tar.gz` inside it. Keep both executables and `examples/` together.
+No Rust installation or sibling checkouts are needed to use a package.
+
+From the unpacked directory:
+
+- **Linux:** extract with `tar -xzf dutchman-plugins-Linux-X64.tar.gz`, then run
+  `./dutchman-plugins list` and `./dutchman-plugins --yes panel print`.
+- **macOS:** extract the archive with Finder or `tar -xzf dutchman-plugins-macOS-ARM64.tar.gz`,
+  then run `./dutchman-plugins list` and `./dutchman-plugins --yes panel print`.
+  Use the architecture in your artifact's name. macOS may require approval in
+  System Settings → Privacy & Security for each downloaded executable.
+- **Windows (PowerShell):** extract with `tar -xzf dutchman-plugins-Windows-X64.tar.gz`,
+  then run `.\dutchman-plugins.exe list` and `.\dutchman-plugins.exe --yes panel print`.
+
+The Print panel runs in the terminal; type `quit` to close it. Without a configured
+companion it shows a setup message. To try the complete panel with a simulated
+printer, save this as `config.toml` in the unpacked directory:
+
+```toml
+[backend]
+kind = "simulated"
+
+[[printers]]
+id = "workbench"
+name = "Workbench demo"
+model = "Example printer"
+```
+
+In another terminal, start the bundled companion, then open the connected panel:
+
+```sh
+./dutchman-plugins companion -- --config config.toml serve --listen 127.0.0.1:8730 --data-dir private-jobs
+./dutchman-plugins --yes --local dutchman-print=http://127.0.0.1:8730 panel print
+```
+
+On Windows use `.\dutchman-plugins.exe` in place of `./dutchman-plugins`.
+Stop the companion with Ctrl+C. This example uses only the built-in simulated
+printer. To prepare a selection, add `--selection-3mf path/to/selection.3mf` to the
+panel command. Physical actions still ask for separate terminal confirmation.
+
+The `companion` and `solidcraft` commands find executables beside the host, then
+on `PATH`; `solidcraft` also checks standard macOS application and Windows
+installation locations.
+Set `DUTCHMAN_PRINT_BIN` or `SOLIDCRAFT_BIN` to an executable path to override
+lookup. Arguments after `--` pass directly to that program, including paths with
+spaces when quoted. For example, `./dutchman-plugins solidcraft -- --control 7878`
+starts an installed SolidCraft with its control channel enabled. SolidCraft is a
+separate download; it is not needed for the Print panel.
+
 ## Building and testing
 
-To try a change without building, download the `plugins` artifact from its CI run: every
-push to `main` and every pull request uploads each plugin folder's `plugin.json` and
-component, the Linux `dutchman-plugins` host and the `dutchman-print` companion it was tested
-with, kept for 14 days (`gh run download <run-id> -R dutchman-cad/plugins -n plugins`).
+The Python smoke tests are Linux-only. Host unit tests run on all three operating
+systems in CI.
 
 Build through the `plugins` build queue. It selects the target directory and
 limits the job count. Set a writable scratch directory for temporary files:
@@ -113,7 +165,7 @@ $BIN run hello-panel
 
 A plugin argument can be an example ID or a directory. Example IDs are looked up in
 `DUTCHMAN_PLUGINS_EXAMPLES` if set, else in an `examples` folder beside the binary or two
-levels up from it (as in a `target/release` build or the CI `plugins` artifact). Command parameters accept
+levels up from it (as in a `target/release` build), then the original source tree. Command parameters accept
 JSON, or plain text which the CLI wraps as a JSON string. Output files use the
 input stem and .solidcraft extension; existing outputs are refused. First use
 prints permissions and asks y/N. --yes approves the current capabilities.

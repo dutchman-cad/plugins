@@ -118,3 +118,91 @@ jobs:
       - name: Run Print companion smoke test
         if: matrix.check == 'components'
         run: python3 tests/print_e2e.py
+
+  binaries:
+    # Reuse the platform-independent components after all existing checks pass.
+    needs: checks
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            suffix: ''
+          - os: macos-latest
+            suffix: ''
+          - os: windows-latest
+            suffix: '.exe'
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: plugins
+    steps:
+      - name: Checkout plugins
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: plugins
+          persist-credentials: false
+      - name: Checkout Bridge
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dutchman-cad/bridge
+          ref: ${{ env.BRIDGE_REV }}
+          path: dutchman-bridge
+          persist-credentials: false
+      - name: Checkout Dutchman
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dutchman-cad/dutchman
+          ref: ${{ env.DUTCHMAN_REV }}
+          path: dutchman
+          persist-credentials: false
+      - name: Checkout Print
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dutchman-cad/print
+          ref: ${{ env.PRINT_REV }}
+          path: print
+          persist-credentials: false
+      - name: Create scratch directory
+        run: mkdir -p .build-tmp
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          workspaces: plugins -> target
+          key: binaries-${{ env.BRIDGE_REV }}-${{ env.DUTCHMAN_REV }}-${{ env.PRINT_REV }}
+      - name: Test host on this OS
+        run: cargo test --locked --release -p dutchman-plugins --lib --bins
+      - name: Build host and Print companion
+        run: |
+          cargo build --locked --release -p dutchman-plugins --bin dutchman-plugins
+          cargo build --manifest-path ../print/Cargo.toml --locked --release --bin dutchman-print
+      - name: Download built components
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plugins
+          path: plugins/component-artifact
+      - name: Package binaries beside plugins
+        env:
+          EXE_SUFFIX: ${{ matrix.suffix }}
+          ARCHIVE: dutchman-plugins-${{ runner.os }}-${{ runner.arch }}.tar.gz
+        run: |
+          mkdir -p bundle/examples
+          cp -R component-artifact/examples/. bundle/examples/
+          cp "target/release/dutchman-plugins${EXE_SUFFIX}" "target/release/dutchman-print${EXE_SUFFIX}" bundle/
+          cp README.md LICENSE-MIT LICENSE-APACHE ATTRIBUTION.md bundle/
+          # Exercise discovery from outside the package directory.
+          "bundle/dutchman-plugins${EXE_SUFFIX}" list
+          "bundle/dutchman-plugins${EXE_SUFFIX}" check bundle/examples/print
+          # Artifact ZIPs discard executable bits; the inner tar preserves them.
+          tar -czf "$ARCHIVE" -C bundle .
+      - name: Upload portable package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dutchman-plugins-${{ runner.os }}-${{ runner.arch }}
+          path: plugins/dutchman-plugins-${{ runner.os }}-${{ runner.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14

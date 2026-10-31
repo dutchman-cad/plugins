@@ -9,7 +9,7 @@ pub use b::exports::solidcraft::plugin::panel as panel_types;
 use b::solidcraft::plugin::{engine, host, log, net, store, types};
 use std::{
     collections::BTreeMap,
-    io::{BufRead, Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::PathBuf,
     sync::{
         Arc,
@@ -722,15 +722,8 @@ impl Plugin {
                     std::io::stdin().is_terminal(),
                     "denied: this action needs confirmation in the terminal"
                 );
-                let mut tty = std::fs::OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open("/dev/tty")
+                let answer = crate::terminal::confirm(&c.action)
                     .context("denied: confirmation terminal unavailable")?;
-                write!(tty, "Press {}? Type y to confirm: ", c.action)?;
-                tty.flush()?;
-                let mut answer = String::new();
-                std::io::BufReader::new(tty).read_line(&mut answer)?;
                 ensure!(answer.trim() == "y", "denied: physical action cancelled");
             }
             ensure!(
@@ -984,8 +977,7 @@ impl Plugin {
         println!(
             "Events: {{\"id\":\"button-id\",\"inputs\":{{}}}}; widget/open-panel; hide/show; quit"
         );
-        let stdin = std::io::stdin();
-        let mut input = stdin.lock();
+        let mut input = crate::terminal::Lines::new()?;
         loop {
             if refresh.take(std::time::Instant::now()) {
                 if let Err(e) = self
@@ -1002,22 +994,10 @@ impl Plugin {
                 }
                 continue;
             }
-            let mut fds = [rustix::event::PollFd::new(
-                &stdin,
-                rustix::event::PollFlags::IN,
-            )];
-            if rustix::event::poll(
-                &mut fds,
-                Some(&rustix::event::Timespec {
-                    tv_sec: 0,
-                    tv_nsec: 100_000_000,
-                }),
-            )? == 0
-            {
+            let Some(line) = input.next(Duration::from_millis(100))? else {
                 continue;
-            }
-            let mut line = String::new();
-            if input.read_line(&mut line)? == 0 {
+            };
+            if line.is_empty() {
                 break;
             }
             match line.trim() {
