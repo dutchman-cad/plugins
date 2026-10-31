@@ -44,14 +44,50 @@ enum Command {
         plugin: PathBuf,
     },
 }
+/// Folders that may hold example plugins, in order: DUTCHMAN_PLUGINS_EXAMPLES, an `examples`
+/// folder beside the binary or two levels up (a `target/release` build or the CI artifact), then
+/// the source tree the host was built from.
+fn examples_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(dir) = std::env::var_os("DUTCHMAN_PLUGINS_EXAMPLES") {
+        roots.push(dir.into());
+    }
+    if let Some(bin) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(PathBuf::from))
+    {
+        roots.push(bin.join("examples"));
+        roots.push(bin.join("../../examples"));
+    }
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples"));
+    roots
+}
+/// The first root that holds a plugin manifest. Cargo's own `target/release/examples`
+/// folder exists in every build but holds none.
+fn examples_root() -> PathBuf {
+    let roots = examples_roots();
+    let holds_plugins = |root: &PathBuf| {
+        std::fs::read_dir(root).is_ok_and(|entries| {
+            entries
+                .flatten()
+                .any(|e| e.path().join("plugin.json").is_file())
+        })
+    };
+    roots
+        .iter()
+        .find(|root| holds_plugins(root))
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples"))
+}
 fn folder(p: PathBuf) -> PathBuf {
     if p.is_dir() {
-        p
-    } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../examples")
-            .join(p)
+        return p;
     }
+    examples_roots()
+        .into_iter()
+        .map(|root| root.join(&p))
+        .find(|dir| dir.join("plugin.json").is_file())
+        .unwrap_or_else(|| examples_root().join(p))
 }
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -82,7 +118,7 @@ async fn main() -> Result<()> {
     }
     match cli.command {
         Command::List => {
-            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples");
+            let root = examples_root();
             let mut extensions = std::collections::BTreeMap::new();
             for item in std::fs::read_dir(root)? {
                 let dir = item?.path();

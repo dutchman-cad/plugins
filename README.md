@@ -111,7 +111,9 @@ printf '%s\n' '{"id":"make-box","inputs":{"size":12}}' quit | $BIN --yes panel h
 $BIN run hello-panel
 ```
 
-A plugin argument can be an example ID or a directory. Command parameters accept
+A plugin argument can be an example ID or a directory. Example IDs are looked up in
+`DUTCHMAN_PLUGINS_EXAMPLES` if set, else in an `examples` folder beside the binary or two
+levels up from it (as in a `target/release` build or the CI `plugins` artifact). Command parameters accept
 JSON, or plain text which the CLI wraps as a JSON string. Output files use the
 input stem and .solidcraft extension; existing outputs are refused. First use
 prints permissions and asks y/N. --yes approves the current capabilities.
