@@ -713,7 +713,12 @@ class PrintSmoke(unittest.TestCase):
             self.assertIn(text, section)
         self.assertNotIn("Mini — idle — needs bed check — proposed", section)
         self.assertEqual(self.panel_select_ids(section), ["bench", "ender", "mini", "gone", "bad"])
-        self.assertTrue(all(r[1] == "GET" for r in self.requests[count:]))
+        self.assertEqual(self.machine_requests(self.requests[count:]), [])
+
+    def machine_requests(self, requests):
+        """Requests other than reads and challenge issuance, which acts on no printer."""
+        return [r[1:3] for r in requests if r[1] != "GET"
+                and not re.fullmatch(r"/api/v1/(queue/[^/]+/)?confirmations", r[2])]
 
     def panel_select_ids(self, output):
         return re.findall(r'id: "select:([^"]+)"', output)
@@ -745,7 +750,7 @@ class PrintSmoke(unittest.TestCase):
         shown = self.overview(run.stdout)
         self.assertIn("Printer page 2 of 2", shown)
         self.assertEqual(len(self.panel_select_ids(shown)), 5)
-        self.assertTrue(all(r[1] == "GET" for r in self.requests))
+        self.assertEqual(self.machine_requests(self.requests), [])
 
     def test_public_address_refused(self):
         self.args = [BIN, "--yes", "--local", "dutchman-print=http://8.8.8.8"]
