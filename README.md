@@ -104,7 +104,8 @@ separate download; it is not needed for the Print panel.
 ## Building and testing
 
 The Python smoke tests are Linux-only. Host unit tests run on all three operating
-systems in CI.
+systems in CI, and `tests/package_session.py` drives each package through a real terminal
+session against the simulated printer.
 
 Build through the `plugins` build queue. It selects the target directory and
 limits the job count. Set a writable scratch directory for temporary files:

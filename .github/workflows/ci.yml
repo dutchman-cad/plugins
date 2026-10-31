@@ -128,10 +128,13 @@ jobs:
         include:
           - os: ubuntu-latest
             suffix: ''
+            python: python3
           - os: macos-latest
             suffix: ''
+            python: python3
           - os: windows-latest
             suffix: '.exe'
+            python: python
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -197,6 +200,9 @@ jobs:
           # Exercise discovery from outside the package directory.
           "bundle/dutchman-plugins${EXE_SUFFIX}" list
           "bundle/dutchman-plugins${EXE_SUFFIX}" check bundle/examples/print
+          # A real terminal session: farm overview, then physical prompts answered n and y.
+          if [ "$RUNNER_OS" = Windows ]; then python -m pip install pywinpty==2.0.15; fi
+          PACKAGE_SESSION_SCRATCH=.build-tmp ${{ matrix.python }} tests/package_session.py bundle
           # Artifact ZIPs discard executable bits; the inner tar preserves them.
           tar -czf "$ARCHIVE" -C bundle .
       - name: Upload portable package
