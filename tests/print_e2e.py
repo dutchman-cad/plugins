@@ -156,6 +156,60 @@ class PrintEndToEnd(unittest.TestCase):
         self.assertIn(json.dumps(params["summary"]), run.stderr)
         return self.value(run)
 
+    def test_queue_dispatch_and_recent_history(self):
+        first = self.value(self.entry("slice"))
+        one = self.value(self.entry("queue-add", {"target": "bench"}))
+        second = self.value(self.entry("slice"))
+        two = self.value(self.entry("queue-add", {"target": "any"}))
+        self.assertEqual(one["job"], first["id"])
+        self.assertEqual(two["job"], second["id"])
+        self.assertEqual([e["id"] for e in self.value(self.entry("queue"))], [one["id"], two["id"]])
+        moved = self.value(self.entry("queue-move", {"queue": two["id"], "position": 0}))
+        self.assertEqual([e["id"] for e in moved], [two["id"], one["id"]])
+        self.entry("queue-remove", {"queue": one["id"]})
+        self.assertEqual(self.get("/api/v1/jobs/" + quote(first["id"], safe=""))["state"], "ready")
+        self.assertEqual(len(self.get("/api/v1/queue")), 1)
+
+        # Queue management and advisory proposals have no machine effect.
+        panel = self.host("panel", "print", input="quit\n")
+        self.assertIn("Farm queue", panel.stdout)
+        self.assertNotIn('id: "dispatch:', panel.stdout)
+        self.assertEqual(self.get("/api/v1/printers")[0]["state"], "idle")
+        _, clear_params = self.review("clear")
+        self.act("clear", clear_params)
+        proposal = self.get("/api/v1/queue/proposals")[0]
+        self.assertEqual(proposal["printer"], "bench")
+        queue_params = {"queue": two["id"], "printer": "bench"}
+        self.entry("dispatch", queue_params, confirm=True, ok=False)
+        challenge = self.value(self.entry("review", dict(queue_params, action="dispatch")))
+        self.assertEqual(challenge["action"], "start")
+        self.assertEqual(challenge["job"], second["id"])
+        params = dict(queue_params, job=challenge["job"], confirmation=challenge["id"], summary=challenge["summary"])
+        # A valid review cannot bypass the person's physical approval.
+        self.entry("dispatch", params, ok=False)
+        self.assertEqual(self.get("/api/v1/printers")[0]["state"], "idle")
+        printing = self.act("dispatch", params)
+        self.assertEqual(printing["state"], "printing")
+        self.assertEqual(self.get("/api/v1/queue"), [])
+        self.entry("dispatch", params, confirm=True, ok=False)
+        self.refused("/api/v1/queue/" + quote(two["id"], safe="") + "/dispatch",
+                     {"confirmation": challenge["id"]}, 404, secrets.token_hex(32))
+        _, stop_params = self.review("stop")
+        self.act("stop", stop_params)
+        deadline = time.monotonic() + 10
+        while True:
+            records = self.get("/api/v1/history?printer=bench&limit=5")
+            execution = next((r for r in records if r["job_id"] == printing["id"]), None)
+            if execution or time.monotonic() >= deadline:
+                break
+            time.sleep(0.05)
+        self.assertIsNotNone(execution)
+        self.assertEqual(execution["outcome"], "stopped")
+        panel = self.host("panel", "print", input="quit\n")
+        for value in ("Recent prints", execution["job_name"], execution["outcome"], execution["ended_at"],
+                      f'{execution["duration_seconds"]} s'):
+            self.assertIn(value, panel.stdout)
+
     def test_prepare_clear_print_and_printer_stop(self):
         fleet = self.value(self.entry("status"))
         self.assertEqual(len(fleet), 1)

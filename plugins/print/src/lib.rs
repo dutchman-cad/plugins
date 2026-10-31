@@ -37,12 +37,25 @@ fn api_body(path: &str, post: bool, mesh: bool, body: Option<&Value>) -> Result<
     checked(status, value)
 }
 fn request(path: &str, post: bool, mesh: bool, body: Option<&Value>) -> Result<(u16, Value), E> {
-    let response = net::fetch(&net::Request {
-        method: if post {
+    request_method(
+        path,
+        if post {
             net::Method::Post
         } else {
             net::Method::Get
         },
+        mesh,
+        body,
+    )
+}
+fn request_method(
+    path: &str,
+    method: net::Method,
+    mesh: bool,
+    body: Option<&Value>,
+) -> Result<(u16, Value), E> {
+    let response = net::fetch(&net::Request {
+        method,
         url: format!("local:dutchman-print{path}"),
         headers: body
             .map(|_| vec![("Content-Type".into(), "application/json".into())])
@@ -107,8 +120,23 @@ fn now() -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
+// One reviewed challenge per action. A dispatch challenge records its queue entry, and
+// challenge_matches checks it, so entry ids (which store keys cannot hold) stay out of keys.
+fn challenge_key(entry: &str, _params: &Value) -> String {
+    format!("challenge_{entry}")
+}
+fn queue_id(params: &Value) -> Result<&str, E> {
+    params["queue"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| invalid("Choose a queue entry."))
+}
 fn review(entry: &str, params: &Value) -> Result<Value, E> {
-    if !["print", "cancel", "pause", "resume", "clear", "stop"].contains(&entry) {
+    if ![
+        "print", "cancel", "pause", "resume", "clear", "stop", "dispatch",
+    ]
+    .contains(&entry)
+    {
         return Err(invalid("Unknown confirmation action"));
     }
     let printer = selected(params)?;
@@ -122,14 +150,22 @@ fn review(entry: &str, params: &Value) -> Result<Value, E> {
     if !supports(current.unwrap_or(&Value::Null), entry) {
         return Err(invalid("Printer does not support this action."));
     }
-    let mut request =
-        json!({"action": if entry == "print" { "start" } else { entry }, "printer": printer});
+    let mut request = json!({"action": if matches!(entry, "print" | "dispatch") { "start" } else { entry }, "printer": printer});
     if ["print", "cancel"].contains(&entry) {
         request["job"] = params["job"].clone();
     }
-    let key = format!("challenge_{entry}");
+    let key = challenge_key(entry, params);
     save(&key, &Value::Null)?;
-    let challenge = api_body("/api/v1/confirmations", true, false, Some(&request))?;
+    let mut challenge = if entry == "dispatch" {
+        api_body(
+            &format!("/api/v1/queue/{}/confirmations", encode(queue_id(params)?)),
+            true,
+            false,
+            Some(&json!({"printer": printer})),
+        )?
+    } else {
+        api_body("/api/v1/confirmations", true, false, Some(&request))?
+    };
     if challenge["id"].as_str().filter(|s| !s.is_empty()).is_none()
         || challenge["summary"]
             .as_str()
@@ -139,9 +175,19 @@ fn review(entry: &str, params: &Value) -> Result<Value, E> {
         || challenge["expires_at"].as_u64().unwrap_or(0) <= now()
         || challenge["action"] != request["action"]
         || challenge["printer"] != request["printer"]
-        || challenge["job"] != request["job"]
+        || (if entry == "dispatch" {
+            challenge["job"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .is_none()
+        } else {
+            challenge["job"] != request["job"]
+        })
     {
         return Err(invalid("Invalid confirmation challenge"));
+    }
+    if entry == "dispatch" {
+        challenge["queue"] = params["queue"].clone();
     }
     save(&key, &challenge)?;
     Ok(challenge)
@@ -158,14 +204,14 @@ fn machine(path: &str, entry: &str, params: &Value) -> Result<Value, E> {
     {
         return Err(invalid("Confirmation summary is required."));
     }
-    let reviewed = load(&format!("challenge_{entry}"));
+    let reviewed = load(&challenge_key(entry, params));
     if reviewed["id"] != params["confirmation"]
         || reviewed["summary"] != params["summary"]
         || !challenge_matches(&reviewed, params)
     {
         return Err(invalid("Request a fresh confirmation challenge first."));
     }
-    save(&format!("challenge_{entry}"), &Value::Null)?;
+    save(&challenge_key(entry, params), &Value::Null)?;
     save("review_pending", &Value::Null)?;
     let (status, value) = request(path, true, false, Some(&json!({"confirmation":id})))?;
     if status == 409 {
@@ -180,6 +226,43 @@ fn execute(entry: &str, params: &Value) -> Result<Value, E> {
     }
     if entry == "status" {
         return printers();
+    }
+    match entry {
+        "queue" => return api("/api/v1/queue", false, false),
+        "queue-add" => {
+            let job = params
+                .get("job")
+                .cloned()
+                .unwrap_or_else(|| load("job")["id"].clone());
+            if job.as_str().filter(|s| !s.is_empty()).is_none() {
+                return Err(invalid("Prepare a job first."));
+            }
+            return api_body(
+                "/api/v1/queue",
+                true,
+                false,
+                Some(&json!({
+                    "job": job, "target": params.get("target").cloned().unwrap_or(json!("any"))
+                })),
+            );
+        }
+        "queue-remove" => {
+            let path = format!("/api/v1/queue/{}", encode(queue_id(params)?));
+            if load(&challenge_key("dispatch", params))["queue"] == params["queue"] {
+                save(&challenge_key("dispatch", params), &Value::Null)?;
+            }
+            let (status, value) = request_method(&path, net::Method::Delete, false, None)?;
+            return checked(status, value);
+        }
+        "queue-move" => {
+            return api_body(
+                &format!("/api/v1/queue/{}/move", encode(queue_id(params)?)),
+                true,
+                false,
+                Some(&json!({"position": params["position"]})),
+            );
+        }
+        _ => {}
     }
     if load("printers").is_null() {
         printers()?;
@@ -210,6 +293,15 @@ fn execute(entry: &str, params: &Value) -> Result<Value, E> {
             save("challenge_print", &Value::Null)?;
             save("challenge_cancel", &Value::Null)?;
             Ok(job)
+        }
+        "dispatch" => {
+            let result = machine(
+                &format!("/api/v1/queue/{}/dispatch", encode(queue_id(params)?)),
+                entry,
+                params,
+            )?;
+            save("job", &result)?;
+            Ok(result)
         }
         "print" | "cancel" => {
             let job = load("job");
@@ -305,9 +397,14 @@ fn challenge_matches(challenge: &Value, params: &Value) -> bool {
     challenge["expires_at"].as_u64().unwrap_or(0) > now()
         && challenge["printer"] == params["printer"]
         && challenge["job"] == params["job"]
+        && challenge["queue"] == params["queue"]
 }
 fn supports(printer: &Value, entry: &str) -> bool {
-    let action = if entry == "print" { "start" } else { entry };
+    let action = if matches!(entry, "print" | "dispatch") {
+        "start"
+    } else {
+        entry
+    };
     printer.get("controls").is_none_or(|controls| {
         controls
             .as_array()
@@ -323,15 +420,24 @@ fn reviewed_button(items: &mut Vec<panel::Item>, entry: &str, label: &str, enabl
     if !supports(current.unwrap_or(&Value::Null), entry) {
         return;
     }
+    reviewed_button_params(items, entry, entry, label, enabled, &action_params(entry));
+}
+fn reviewed_button_params(
+    items: &mut Vec<panel::Item>,
+    entry: &str,
+    id: &str,
+    label: &str,
+    enabled: bool,
+    params: &Value,
+) {
     if enabled {
-        let params = action_params(entry);
-        let mut challenge = load(&format!("challenge_{entry}"));
-        if !challenge_matches(&challenge, &params) {
-            match review(entry, &params) {
+        let mut challenge = load(&challenge_key(entry, params));
+        if !challenge_matches(&challenge, params) {
+            match review(entry, params) {
                 Ok(value) => challenge = value,
                 Err(error) => {
                     items.push(text(message(error)));
-                    items.push(button(entry, label, false));
+                    items.push(button(id, label, false));
                     return;
                 }
             }
@@ -340,7 +446,133 @@ fn reviewed_button(items: &mut Vec<panel::Item>, entry: &str, label: &str, enabl
             items.push(text(summary.into()));
         }
     }
-    items.push(button(entry, label, enabled));
+    items.push(button(id, label, enabled));
+}
+fn render_farm(items: &mut Vec<panel::Item>, job: &Value, selected: &Value) {
+    items.push(panel::Item::Heading("Farm queue".into()));
+    let ready = job["state"] == "ready";
+    items.push(button(
+        "queue-this",
+        "Queue for this printer",
+        ready && job["printer"] == *selected,
+    ));
+    items.push(button("queue-any", "Queue for any printer", ready));
+    let result = (|| -> Result<(), E> {
+        let queue = api("/api/v1/queue", false, false)?;
+        let proposals = api("/api/v1/queue/proposals", false, false)?;
+        let entries = queue
+            .as_array()
+            .ok_or_else(|| invalid("Invalid queue list"))?;
+        let proposals = proposals
+            .as_array()
+            .ok_or_else(|| invalid("Invalid queue proposals"))?;
+        if entries.is_empty() {
+            items.push(text("Queue is empty.".into()));
+        }
+        // Page the queue to bound output and preparation work.
+        let page = load("queue_page").as_u64().unwrap_or(0) as usize;
+        let page = page.min(entries.len().saturating_sub(1) / 20);
+        save("queue_page", &json!(page))?;
+        for (position, entry) in entries.iter().enumerate().skip(page * 20).take(20) {
+            let id = entry["id"]
+                .as_str()
+                .ok_or_else(|| invalid("Invalid queue entry"))?;
+            let source = entry["job"].as_str().unwrap_or("");
+            let original = api(&format!("/api/v1/jobs/{}", encode(source)), false, false);
+            let name = original
+                .as_ref()
+                .ok()
+                .and_then(|j| j["name"].as_str())
+                .unwrap_or(source);
+            let proposal = proposals
+                .iter()
+                .find(|p| p["id"] == id)
+                .unwrap_or(&Value::Null);
+            items.push(text(format!(
+                "{}. {} — target: {} — proposed printer: {}",
+                position + 1,
+                name,
+                entry["target"].as_str().unwrap_or("any"),
+                proposal["printer"].as_str().unwrap_or("none")
+            )));
+            for reason in [entry["reason"].as_str(), proposal["reason"].as_str()]
+                .into_iter()
+                .flatten()
+            {
+                items.push(text(reason.chars().take(1024).collect()));
+            }
+            if entry["attempted"] == true || entry["reason"].is_string() {
+                items.push(text("Failed or attempted dispatch keeps its printer reserved until removed. Check the tracked job and printer before removing.".into()));
+            }
+            items.push(button(&format!("remove:{id}"), "Remove from queue", true));
+            items.push(button(&format!("up:{id}"), "Move up", position > 0));
+            if let Some(printer) = proposal["printer"]
+                .as_str()
+                .filter(|_| entry["attempted"] != true)
+            {
+                let mut params = json!({"queue": id, "printer": printer});
+                let challenge = load(&challenge_key("dispatch", &params));
+                params["job"] = challenge["job"].clone();
+                reviewed_button_params(
+                    items,
+                    "dispatch",
+                    &format!("dispatch:{id}"),
+                    "Dispatch",
+                    true,
+                    &params,
+                );
+            }
+        }
+        if entries.len() > 20 {
+            items.push(text(format!(
+                "Queue page {} of {}",
+                page + 1,
+                entries.len().div_ceil(20)
+            )));
+            items.push(button("queue-prev", "Previous queued jobs", page > 0));
+            items.push(button(
+                "queue-next",
+                "Next queued jobs",
+                (page + 1) * 20 < entries.len(),
+            ));
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        items.push(text(message(error)));
+    }
+    items.push(panel::Item::Heading("Recent prints".into()));
+    if let Some(printer) = selected.as_str() {
+        match api(
+            &format!("/api/v1/history?printer={}&limit=5", encode(printer)),
+            false,
+            false,
+        ) {
+            Ok(history) => {
+                if let Some(records) = history.as_array() {
+                    if records.is_empty() {
+                        items.push(text("No recent prints.".into()));
+                    }
+                    for record in records.iter().take(5) {
+                        let duration = record["duration_seconds"]
+                            .as_u64()
+                            .map(|n| format!("{n} s"))
+                            .unwrap_or_else(|| "unknown duration".into());
+                        items.push(text(format!(
+                            "{} — {} — {} — {}",
+                            record["job_name"].as_str().unwrap_or("Bed clearance"),
+                            record["outcome"].as_str().unwrap_or("unknown"),
+                            record["ended_at"].as_str().unwrap_or("unknown time"),
+                            duration
+                        )));
+                    }
+                } else {
+                    items.push(text("Invalid print history".into()));
+                }
+            }
+            Err(error) => items.push(text(message(error))),
+        }
+    }
 }
 impl panel::Guest for Print {
     fn handle(event: panel::Event) -> Result<(), E> {
@@ -363,7 +595,49 @@ impl panel::Guest for Print {
                         _ => {}
                     }
                 }
-                if ["print", "cancel", "pause", "resume", "clear", "stop"]
+                if action.id == "queue-prev" || action.id == "queue-next" {
+                    let page = load("queue_page").as_u64().unwrap_or(0);
+                    save(
+                        "queue_page",
+                        &json!(if action.id == "queue-prev" {
+                            page.saturating_sub(1)
+                        } else {
+                            page.saturating_add(1)
+                        }),
+                    )
+                } else if let Some(id) = action.id.strip_prefix("dispatch:") {
+                    let params = json!({"queue": id});
+                    let challenge = load(&challenge_key("dispatch", &params));
+                    let params = json!({"queue": id, "printer": challenge["printer"], "job": challenge["job"]});
+                    if !challenge_matches(&challenge, &params) {
+                        // Rendering obtains a fresh proposal and review before another press.
+                        Ok(())
+                    } else {
+                        host::request_execute(
+                            "dispatch",
+                            &json!({
+                                "queue": id, "printer": params["printer"], "job": params["job"],
+                                "confirmation": challenge["id"], "summary": challenge["summary"]
+                            })
+                            .to_string(),
+                        )
+                    }
+                } else if let Some(id) = action.id.strip_prefix("remove:") {
+                    execute("queue-remove", &json!({"queue": id})).map(|_| ())
+                } else if let Some(id) = action.id.strip_prefix("up:") {
+                    let queue = api("/api/v1/queue", false, false)?;
+                    let position = queue
+                        .as_array()
+                        .and_then(|a| a.iter().position(|e| e["id"] == id))
+                        .ok_or_else(|| invalid("Queue entry no longer exists."))?;
+                    execute(
+                        "queue-move",
+                        &json!({"queue": id, "position": position.saturating_sub(1)}),
+                    )
+                    .map(|_| ())
+                } else if action.id == "queue-this" || action.id == "queue-any" {
+                    execute("queue-add", &json!({"target": if action.id == "queue-this" { load("printer") } else { json!("any") }})).map(|_| ())
+                } else if ["print", "cancel", "pause", "resume", "clear", "stop"]
                     .contains(&action.id.as_str())
                 {
                     let fleet = load("printers");
@@ -562,6 +836,7 @@ impl panel::Guest for Print {
                 items.push(text(short(detail)));
             }
         }
+        render_farm(&mut items, &job, &selected);
         items
     }
     fn markers() -> Vec<panel::Marker> {
@@ -572,4 +847,41 @@ impl panel::Guest for Print {
 mod component_exports {
     use super::Print;
     super::export!(Print with_types_in crate);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn queue_review_binds_entry_printer_job_and_expiry() {
+        let params = json!({"queue": "entry/one", "printer": "bench", "job": "bound-job"});
+        let mut challenge = params.clone();
+        challenge["expires_at"] = json!(now() + 60);
+        assert!(challenge_matches(&challenge, &params));
+        for key in ["queue", "printer", "job"] {
+            let mut changed = params.clone();
+            changed[key] = json!("other");
+            assert!(!challenge_matches(&challenge, &changed));
+        }
+        challenge["expires_at"] = json!(0);
+        assert!(!challenge_matches(&challenge, &params));
+        assert_ne!(
+            challenge_key("dispatch", &params),
+            challenge_key("print", &params)
+        );
+        // Entry ids such as "entry/one" never reach a store key.
+        assert_eq!(challenge_key("dispatch", &params), "challenge_dispatch");
+    }
+
+    #[test]
+    fn queue_dispatch_requires_start_control() {
+        assert!(supports(
+            &json!({"controls": ["start", "clear"]}),
+            "dispatch"
+        ));
+        assert!(!supports(&json!({"controls": []}), "dispatch"));
+        assert!(!supports(&json!({"controls": ["stop"]}), "dispatch"));
+        assert_eq!(encode("entry/one &+"), "entry%2Fone%20%26%2B");
+    }
 }
