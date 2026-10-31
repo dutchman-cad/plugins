@@ -163,7 +163,7 @@ class Smoke(unittest.TestCase):
             self.env["SOLIDCRAFT_CONTROL_TOKEN"] = "a" * 64
             try:
                 output = self.host("--port", str(server.server_address[1]), "panel", "hello-panel",
-                                   input='{"id":"make-box","inputs":{"size":12}}\nquit\n')
+                                   input='Size=12\n2\nquit\n')
             finally:
                 server.shutdown()
                 thread.join()
@@ -171,6 +171,9 @@ class Smoke(unittest.TestCase):
         self.assertEqual(len(runs), 1, requests)
         self.assertEqual(runs[0]["params"], {"command": "solid.box", "params": {"length": 12.0, "width": 12.0, "height": 12.0}, "allow_paths": []})
         self.assertIn("1 boxes", output)
+        self.assertIn("[1] Size (id=size) = 12 mm", output)
+        self.assertIn("[2] Make box (id=make-box) — button", output)
+        self.assertNotIn("Item::", output)
 
 from print_api import PrintSmoke
 
