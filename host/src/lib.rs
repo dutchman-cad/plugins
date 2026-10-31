@@ -5,3 +5,5 @@ pub mod manifest;
 pub mod policy;
 pub mod runtime;
 pub mod storage;
+
+mod terminal;
