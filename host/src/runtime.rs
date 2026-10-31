@@ -932,7 +932,7 @@ fn panel_valid(items: &mut [panel_types::Item], markers: &[panel_types::Marker])
 impl Plugin {
     fn draw_panel(&self, items: &[panel_types::Item], view: (bool, bool)) {
         if view.0 {
-            println!("{items:#?}");
+            print!("{}", crate::panel_text::render(items));
         }
         if view.1
             && self
@@ -948,7 +948,12 @@ impl Plugin {
                     None
                 }
             });
-            println!("Widget: {status:?}; menu: Open panel (open-panel)");
+            println!(
+                "Widget: {}; menu: Open panel (open-panel)",
+                status
+                    .map(crate::panel_text::status)
+                    .unwrap_or_else(|| "No status".into())
+            );
         }
     }
     pub async fn panel(&self, port: Option<u16>) -> Result<()> {
@@ -975,7 +980,7 @@ impl Plugin {
         )
         .await?;
         println!(
-            "Events: {{\"id\":\"button-id\",\"inputs\":{{}}}}; widget/open-panel; hide/show; quit"
+            "Controls: number, ID or unique label; input: name=value (choice numbers start at 1). JSON events also accepted. widget/open-panel; hide/show; quit"
         );
         let mut input = crate::terminal::Lines::new()?;
         loop {
@@ -1031,6 +1036,18 @@ impl Plugin {
                 continue;
             }
             let result = async {
+                if !line.trim_start().starts_with('{') {
+                    let action = crate::panel_text::action(&previous, &line)?;
+                    return self
+                        .panel_event(
+                            panel_types::Event::Action(action),
+                            port,
+                            &mut previous,
+                            &mut refresh,
+                            view,
+                        )
+                        .await;
+                }
                 let v = policy::json(&line)?;
                 let id = v
                     .get("id")
@@ -1076,7 +1093,7 @@ impl Plugin {
             }
             .await;
             if let Err(e) = result {
-                eprintln!("Panel call failed: {e:#}. Previous rows: {previous:?}");
+                eprintln!("Panel call failed: {e:#}");
             }
         }
         Ok(())

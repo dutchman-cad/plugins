@@ -158,7 +158,7 @@ $BIN check examples/pilot
 $BIN run pilot how 'round all edges 3 mm'
 $BIN run pilot plan 'make a 20 mm cube'
 $BIN import importer-fusion examples/generated_unit_cube.f3d --open
-printf '%s\n' '{"id":"make-box","inputs":{"size":12}}' quit | $BIN --yes panel hello-panel
+printf '%s\n' 'Size=12' 'Make box' quit | $BIN --yes panel hello-panel
 # Equivalent panel entry:
 $BIN run hello-panel
 ```
@@ -263,8 +263,25 @@ from the bodies to print; the host reads and sends it directly, without exposing
 bytes or paths to the component. Standard quality and the whole file are supported.
 Named bodies and other quality requests are refused. Uploads are capped at 256 MiB.
 
-Panel input is JSON, for example `{"id":"slice"}` then `{"id":"print"}`.
-Choice inputs use an index: `{"id":"status","inputs":{"printer":0}}`.
+Panels display headings, text, aligned rows, status percentages and numbered controls:
+
+```text
+== Hello — 0 boxes ==
+[1] Size (id=size) = 10 mm [number; 1..1000; step 1]
+[2] Make box (id=make-box) — button
+```
+
+Enter `2`, `make-box`, or `Make box` to press the button. Set an input with
+`1=12` or `Size=12`. Choices accept an option name or a number starting at 1,
+for example `Printer=2`. Checkboxes accept `true`/`false`, or toggle when selected
+without a value. Text accepts plain text or a quoted JSON string for line breaks.
+Disabled buttons cannot be selected. Numbers and control names refer to the latest
+panel display; labels must be unique. Consecutive rows form aligned tables; text
+line breaks and list prefixes are preserved.
+
+JSON events remain supported, for example `{"id":"slice"}` then `{"id":"print"}`.
+JSON choice indices still start at zero: `{"id":"status","inputs":{"printer":0}}`.
+Numbered and named actions follow the same confirmation and policy checks as JSON events.
 `hide` hides both surfaces and drops the timer; `show` starts a fresh interval.
 `quit` stops the plugin. `widget` leaves only the widget visible; `open-panel` opens its panel.
 Each machine action has two steps. Call the `review` read entry with `action`

@@ -267,7 +267,7 @@ class PrintSmoke(unittest.TestCase):
         run = self.run_host("panel", "print", input="quit\n")
         self.assertIn("Workbench", run.stdout)
         self.assertIn("Widget:", run.stdout)
-        self.assertIn("0.25", run.stdout)
+        self.assertIn("25%", run.stdout)
         self.assertIn("90 s left", run.stdout)
         for action in ("pause", "resume", "cancel", "clear"):
             self.act(action)
@@ -343,7 +343,7 @@ class PrintSmoke(unittest.TestCase):
         run = self.run_host("panel", "print", input='{"id":"queue-next"}\nquit\n')
         self.assertIn("Queue page 1 of 2", run.stdout)
         self.assertIn("Queue page 2 of 2", run.stdout)
-        self.assertIn('id: "remove:entry/21"', run.stdout)
+        self.assertIn('(id=remove:entry/21)', run.stdout)
         self.assertFalse(any("plugin-confirmation" in r[3] for r in self.requests))
 
     def test_dispatch_changed_observation_needs_another_approval(self):
@@ -389,7 +389,7 @@ class PrintSmoke(unittest.TestCase):
         run = self.run_host("panel", "print", input="quit\n")
         self.assertIn("Backend unavailable.", run.stdout)
         self.assertIn("reserved until removed", run.stdout)
-        self.assertNotIn('id: "dispatch:entry/1"', run.stdout)
+        self.assertNotIn('(id=dispatch:entry/1)', run.stdout)
 
     def test_challenge_binding_expiry_replay_and_header(self):
         self.run_host("run", "print", "slice")
@@ -528,7 +528,7 @@ class PrintSmoke(unittest.TestCase):
         self.assertEqual(self.state, "idle")
 
     def panel_buttons(self, output):
-        return {k: v for k, v in re.findall(r'Button \{\s*id: "([^"]+)",\s*label: "[^"]+",\s*enabled: (true|false)', output) if not k.startswith(("queue-", "select:", "farm-"))}
+        return {k: "false" if v else "true" for k, v in re.findall(r'\[\d+\] .*? \(id=([^\n)]+)\) — button( \(disabled\))?', output) if not k.startswith(("queue-", "select:", "farm-"))}
 
     def reviewed_actions(self):
         return [json.loads(r[4])["action"] for r in self.requests if r[2] == "/api/v1/confirmations"]
@@ -621,6 +621,16 @@ class PrintSmoke(unittest.TestCase):
         self.assertNotIn("? s left", run.stdout)
         self.assertIn("confirmation", run.stdout + run.stderr)
         self.assertFalse(any(r[2].endswith("/start") for r in self.requests))
+
+    def test_named_panel_controls_preserve_confirmation(self):
+        self.needs_clearing = False
+        run = self.run_host("panel", "print", input="Slice selection\nprint\nquit\n")
+        self.assertIn("confirmation", run.stdout + run.stderr)
+        self.assertFalse(any(r[2].endswith("/start") for r in self.requests))
+        self.assertNotIn("Item::", run.stdout)
+        self.assertNotIn("Status {", run.stdout)
+        self.run_host("panel", "print", input="Print\nquit\n", confirm=True)
+        self.assertEqual(sum(r[2].endswith("/start") for r in self.requests), 1)
 
     def test_companion_error_is_plain_text(self):
         self.error = "Printer is unavailable."
@@ -726,7 +736,7 @@ class PrintSmoke(unittest.TestCase):
                 and not re.fullmatch(r"/api/v1/(queue/[^/]+/)?confirmations", r[2])]
 
     def panel_select_ids(self, output):
-        return re.findall(r'id: "select:([^"]+)"', output)
+        return re.findall(r'\(id=select:([^\n)]+)\)', output)
 
     def test_overview_select_changes_selection_and_sends_no_action(self):
         self.needs_clearing = False
@@ -734,8 +744,8 @@ class PrintSmoke(unittest.TestCase):
         run = self.run_host("panel", "print", input='{"id":"select:ender"}\nquit\n')
         # After selecting, the monitoring-only printer is the selected one.
         self.assertIn("This printer is monitoring only.", run.stdout.rsplit("Farm overview", 1)[1])
-        self.assertIn('label: "Selected: Ender"', run.stdout.rsplit("Farm overview", 1)[1])
-        self.assertIn('label: "Select Workbench"', run.stdout.rsplit("Farm overview", 1)[1])
+        self.assertIn('Selected: Ender (id=', run.stdout.rsplit("Farm overview", 1)[1])
+        self.assertIn('Select Workbench (id=', run.stdout.rsplit("Farm overview", 1)[1])
         self.assertTrue(all(r[1] == "GET" for r in self.requests), self.requests)
         self.assertEqual(self.challenges, {})
         run = self.run_host("panel", "print", input='{"id":"select:nowhere"}\nquit\n')
@@ -749,8 +759,8 @@ class PrintSmoke(unittest.TestCase):
         shown = self.overview(run.stdout)
         self.assertIn("Printer page 2 of 2", shown)
         self.assertEqual(len(self.panel_select_ids(shown)), 5)
-        self.assertIn('id: "select:p24"', shown)
-        self.assertNotIn('id: "select:p1"', shown)
+        self.assertIn('(id=select:p24)', shown)
+        self.assertNotIn('(id=select:p1)', shown)
         run = self.run_host("panel", "print", input='quit\n')
         shown = self.overview(run.stdout)
         self.assertIn("Printer page 2 of 2", shown)

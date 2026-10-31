@@ -173,7 +173,7 @@ class PrintEndToEnd(unittest.TestCase):
         # Queue management and advisory proposals have no machine effect.
         panel = self.host("panel", "print", input="quit\n")
         self.assertIn("Farm queue", panel.stdout)
-        self.assertNotIn('id: "dispatch:', panel.stdout)
+        self.assertNotIn('(id=dispatch:', panel.stdout)
         self.assertEqual(self.get("/api/v1/printers")[0]["state"], "idle")
         _, clear_params = self.review("clear")
         self.act("clear", clear_params)
