@@ -561,7 +561,7 @@ fn history_line(record: &Value) -> String {
         .as_str()
         .map(time_text)
         .unwrap_or_else(|| "unknown time".into());
-    if record["job_name"].is_null() && record["outcome"] == "bed_clear" {
+    if record["outcome"] == "bed_clear" {
         return format!("Bed check acknowledged — {time}");
     }
     let duration = record["duration_seconds"]
