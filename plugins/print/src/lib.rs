@@ -448,6 +448,143 @@ fn reviewed_button_params(
     }
     items.push(button(id, label, enabled));
 }
+/// Printers shown per page of the farm overview.
+const OVERVIEW_PAGE: usize = 20;
+/// Counts for the farm summary line. A printer that needs a bed check is counted there and
+/// not as idle; a printing or paused one is counted as printing even if the flag is set.
+#[derive(Debug, PartialEq, Default)]
+struct FarmCounts {
+    total: usize,
+    printing: usize,
+    idle: usize,
+    bed_check: usize,
+    offline: usize,
+    other: usize,
+}
+fn farm_counts(fleet: &[Value]) -> FarmCounts {
+    let mut c = FarmCounts {
+        total: fleet.len(),
+        ..Default::default()
+    };
+    for p in fleet {
+        match p["state"].as_str() {
+            Some("printing" | "paused") => c.printing += 1,
+            Some("offline" | "error") => c.offline += 1,
+            Some("idle") if p["needs_clearing"] == true => c.bed_check += 1,
+            Some("idle") => c.idle += 1,
+            _ if p["needs_clearing"] == true => c.bed_check += 1,
+            _ => c.other += 1,
+        }
+    }
+    c
+}
+fn farm_summary(c: &FarmCounts, queued: Option<usize>) -> String {
+    let mut line = format!(
+        "{} printers: {} printing, {} idle, {} need a bed check, {} offline or error",
+        c.total, c.printing, c.idle, c.bed_check, c.offline
+    );
+    if c.other > 0 {
+        line.push_str(&format!(", {} other", c.other));
+    }
+    match queued {
+        Some(n) => line.push_str(&format!(" — queue length {n}")),
+        None => line.push_str(" — queue length unknown"),
+    }
+    line
+}
+/// One overview line for a printer. `proposed` describes the queue entry proposed for it.
+fn farm_line(p: &Value, proposed: Option<&str>) -> String {
+    let mut line = format!(
+        "{} — {}",
+        short(p["name"].as_str().unwrap_or("Printer")),
+        p["state"].as_str().unwrap_or("unknown")
+    );
+    if matches!(p["state"].as_str(), Some("printing" | "paused")) {
+        if let Some(name) = p["job_name"].as_str() {
+            line.push_str(&format!(" — {}", short(name)));
+        }
+        if let Some(n) = p["progress"].as_f64().filter(|n| n.is_finite()) {
+            line.push_str(&format!(" — {:.0}%", n.clamp(0.0, 1.0) * 100.0));
+        }
+    }
+    if p["needs_clearing"] == true {
+        line.push_str(" — needs bed check");
+    }
+    if let Some(entry) = proposed {
+        line.push_str(&format!(" — proposed: {entry}"));
+    }
+    line
+}
+/// Read-only farm overview: one line and one select button per printer. It only reads.
+fn render_overview(items: &mut Vec<panel::Item>, fleet: &[Value], selected: &Value) {
+    items.push(panel::Item::Heading("Farm overview".into()));
+    let queue = api("/api/v1/queue", false, false);
+    let proposed = api("/api/v1/queue/proposals", false, false);
+    let entries = queue.as_ref().ok().and_then(Value::as_array);
+    let proposals = proposed.as_ref().ok().and_then(Value::as_array);
+    if entries.is_none() || proposals.is_none() {
+        items.push(text("Queue information is unavailable.".into()));
+    }
+    items.push(text(farm_summary(
+        &farm_counts(fleet),
+        entries.map(Vec::len),
+    )));
+    if fleet.is_empty() {
+        items.push(text("No printers.".into()));
+        return;
+    }
+    let page = load("farm_page").as_u64().unwrap_or(0) as usize;
+    let page = page.min((fleet.len() - 1) / OVERVIEW_PAGE);
+    let _ = save("farm_page", &json!(page));
+    for p in fleet.iter().skip(page * OVERVIEW_PAGE).take(OVERVIEW_PAGE) {
+        let proposed = proposals
+            .and_then(|list| list.iter().find(|x| x["printer"] == p["id"]))
+            .map(|proposal| {
+                let position =
+                    entries.and_then(|list| list.iter().position(|e| e["id"] == proposal["id"]));
+                let source = position
+                    .and_then(|n| entries.map(|list| &list[n]))
+                    .and_then(|e| e["job"].as_str())
+                    .unwrap_or("");
+                let name = api(&format!("/api/v1/jobs/{}", encode(source)), false, false)
+                    .ok()
+                    .and_then(|j| j["name"].as_str().map(short))
+                    .unwrap_or_else(|| short(source));
+                match position {
+                    Some(n) => format!("queue #{} {name}", n + 1),
+                    None => name,
+                }
+            });
+        items.push(text(farm_line(p, proposed.as_deref())));
+        if let Some(id) = p["id"].as_str() {
+            items.push(button(
+                &format!("select:{id}"),
+                &if p["id"] == *selected {
+                    format!(
+                        "Selected: {}",
+                        short(p["name"].as_str().unwrap_or("Printer"))
+                    )
+                } else {
+                    format!("Select {}", short(p["name"].as_str().unwrap_or("Printer")))
+                },
+                p["id"] != *selected,
+            ));
+        }
+    }
+    if fleet.len() > OVERVIEW_PAGE {
+        items.push(text(format!(
+            "Printer page {} of {}",
+            page + 1,
+            fleet.len().div_ceil(OVERVIEW_PAGE)
+        )));
+        items.push(button("farm-prev", "Previous printers", page > 0));
+        items.push(button(
+            "farm-next",
+            "Next printers",
+            (page + 1) * OVERVIEW_PAGE < fleet.len(),
+        ));
+    }
+}
 fn render_farm(items: &mut Vec<panel::Item>, job: &Value, selected: &Value) {
     items.push(panel::Item::Heading("Farm queue".into()));
     let ready = job["state"] == "ready";
@@ -595,7 +732,28 @@ impl panel::Guest for Print {
                         _ => {}
                     }
                 }
-                if action.id == "queue-prev" || action.id == "queue-next" {
+                if action.id == "farm-prev" || action.id == "farm-next" {
+                    let page = load("farm_page").as_u64().unwrap_or(0);
+                    save(
+                        "farm_page",
+                        &json!(if action.id == "farm-prev" {
+                            page.saturating_sub(1)
+                        } else {
+                            page.saturating_add(1)
+                        }),
+                    )
+                } else if let Some(id) = action.id.strip_prefix("select:") {
+                    // Selection only; no request is sent to the Print service.
+                    let fleet = load("printers");
+                    let known = fleet
+                        .as_array()
+                        .is_some_and(|a| a.iter().any(|p| p["id"] == id));
+                    if known {
+                        save("printer", &json!(id))
+                    } else {
+                        Err(invalid("Printer no longer exists."))
+                    }
+                } else if action.id == "queue-prev" || action.id == "queue-next" {
                     let page = load("queue_page").as_u64().unwrap_or(0);
                     save(
                         "queue_page",
@@ -748,14 +906,14 @@ impl panel::Guest for Print {
         if load("error").is_string() {
             state = panel::WidgetState::Error;
         }
-        let mut items = vec![
-            panel::Item::Heading("Print selected bodies".into()),
-            panel::Item::Status(panel::Status {
-                lines,
-                progress,
-                state,
-            }),
-        ];
+        let mut items = vec![];
+        render_overview(&mut items, &fleet, &selected);
+        items.push(panel::Item::Heading("Print selected bodies".into()));
+        items.push(panel::Item::Status(panel::Status {
+            lines,
+            progress,
+            state,
+        }));
         if let Some(error) = load("error").as_str() {
             items.push(text(error.chars().take(1024).collect()));
         }
@@ -872,6 +1030,48 @@ mod tests {
         );
         // Entry ids such as "entry/one" never reach a store key.
         assert_eq!(challenge_key("dispatch", &params), "challenge_dispatch");
+    }
+
+    #[test]
+    fn farm_summary_counts_states_and_queue() {
+        let fleet = vec![
+            json!({"state": "printing", "needs_clearing": true}),
+            json!({"state": "paused"}),
+            json!({"state": "idle"}),
+            json!({"state": "idle", "needs_clearing": true}),
+            json!({"state": "offline"}),
+            json!({"state": "error"}),
+            json!({"state": "attention"}),
+        ];
+        let c = farm_counts(&fleet);
+        assert_eq!(
+            c,
+            FarmCounts {
+                total: 7,
+                printing: 2,
+                idle: 1,
+                bed_check: 1,
+                offline: 2,
+                other: 1
+            }
+        );
+        assert_eq!(
+            farm_summary(&c, Some(3)),
+            "7 printers: 2 printing, 1 idle, 1 need a bed check, 2 offline or error, 1 other — queue length 3"
+        );
+        assert!(farm_summary(&FarmCounts::default(), None).ends_with("queue length unknown"));
+    }
+
+    #[test]
+    fn farm_line_shows_job_progress_bed_check_and_proposal() {
+        let printing =
+            json!({"name": "A", "state": "printing", "job_name": "Part", "progress": 0.5});
+        assert_eq!(farm_line(&printing, None), "A — printing — Part — 50%");
+        let idle = json!({"name": "B", "state": "idle", "needs_clearing": true, "job_name": "Old"});
+        assert_eq!(
+            farm_line(&idle, Some("queue #1 Part")),
+            "B — idle — needs bed check — proposed: queue #1 Part"
+        );
     }
 
     #[test]

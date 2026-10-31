@@ -525,7 +525,7 @@ class PrintSmoke(unittest.TestCase):
         self.assertEqual(self.state, "idle")
 
     def panel_buttons(self, output):
-        return {k: v for k, v in re.findall(r'Button \{\s*id: "([^"]+)",\s*label: "[^"]+",\s*enabled: (true|false)', output) if not k.startswith("queue-")}
+        return {k: v for k, v in re.findall(r'Button \{\s*id: "([^"]+)",\s*label: "[^"]+",\s*enabled: (true|false)', output) if not k.startswith(("queue-", "select:", "farm-"))}
 
     def reviewed_actions(self):
         return [json.loads(r[4])["action"] for r in self.requests if r[2] == "/api/v1/confirmations"]
@@ -688,6 +688,64 @@ class PrintSmoke(unittest.TestCase):
         run = self.run_host("run", "print", "clear", '{"printer":"bench"}', confirm=True, ok=False)
         self.assertIn("for tests only", run.stderr)
         self.assertEqual(self.requests, [])
+
+    def overview(self, output):
+        """The overview section of the last rendered panel."""
+        return output.rsplit("Farm overview", 1)[1].split("Print selected bodies")[0]
+
+    def test_farm_overview_lists_printers_summary_and_proposals(self):
+        self.needs_clearing = False
+        self.queue_command("slice")
+        self.queue_command("queue-add", {"target": "any"})
+        self.extra_printers = [
+            {"id": "ender", "name": "Ender", "state": "printing", "progress": 0.5, "job_name": "Bracket", "needs_clearing": False},
+            {"id": "mini", "name": "Mini", "state": "idle", "needs_clearing": True},
+            {"id": "gone", "name": "Gone", "state": "offline"},
+            {"id": "bad", "name": "Bad", "state": "error"},
+        ]
+        count = len(self.requests)
+        run = self.run_host("panel", "print", input="quit\n")
+        section = self.overview(run.stdout)
+        for text in ("5 printers: 1 printing, 1 idle, 1 need a bed check, 2 offline or error — queue length 1",
+                     "Workbench — idle — proposed: queue #1 Selection",
+                     "Ender — printing — Bracket — 50%", "Mini — idle — needs bed check",
+                     "Gone — offline", "Bad — error"):
+            self.assertIn(text, section)
+        self.assertNotIn("Mini — idle — needs bed check — proposed", section)
+        self.assertEqual(self.panel_select_ids(section), ["bench", "ender", "mini", "gone", "bad"])
+        self.assertTrue(all(r[1] == "GET" for r in self.requests[count:]))
+
+    def panel_select_ids(self, output):
+        return re.findall(r'id: "select:([^"]+)"', output)
+
+    def test_overview_select_changes_selection_and_sends_no_action(self):
+        self.needs_clearing = False
+        self.extra_printers = [{"id": "ender", "name": "Ender", "state": "printing", "progress": 0.5, "job_name": "Bracket", "controls": []}]
+        run = self.run_host("panel", "print", input='{"id":"select:ender"}\nquit\n')
+        # After selecting, the monitoring-only printer is the selected one.
+        self.assertIn("This printer is monitoring only.", run.stdout.rsplit("Farm overview", 1)[1])
+        self.assertIn('label: "Selected: Ender"', run.stdout.rsplit("Farm overview", 1)[1])
+        self.assertIn('label: "Select Workbench"', run.stdout.rsplit("Farm overview", 1)[1])
+        self.assertTrue(all(r[1] == "GET" for r in self.requests), self.requests)
+        self.assertEqual(self.challenges, {})
+        run = self.run_host("panel", "print", input='{"id":"select:nowhere"}\nquit\n')
+        self.assertIn("Printer no longer exists.", run.stdout)
+        self.assertTrue(all(r[1] == "GET" for r in self.requests))
+
+    def test_overview_pages_long_printer_lists(self):
+        self.extra_printers = [{"id": f"p{n}", "name": f"Printer {n:02}", "state": "idle"} for n in range(1, 25)]
+        run = self.run_host("panel", "print", input='{"id":"farm-next"}\nquit\n')
+        self.assertIn("25 printers: ", run.stdout)
+        shown = self.overview(run.stdout)
+        self.assertIn("Printer page 2 of 2", shown)
+        self.assertEqual(len(self.panel_select_ids(shown)), 5)
+        self.assertIn('id: "select:p24"', shown)
+        self.assertNotIn('id: "select:p1"', shown)
+        run = self.run_host("panel", "print", input='quit\n')
+        shown = self.overview(run.stdout)
+        self.assertIn("Printer page 2 of 2", shown)
+        self.assertEqual(len(self.panel_select_ids(shown)), 5)
+        self.assertTrue(all(r[1] == "GET" for r in self.requests))
 
     def test_public_address_refused(self):
         self.args = [BIN, "--yes", "--local", "dutchman-print=http://8.8.8.8"]
