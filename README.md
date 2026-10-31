@@ -65,6 +65,7 @@ From the unpacked directory:
   System Settings → Privacy & Security for each downloaded executable.
 - **Windows (PowerShell):** extract with `tar -xzf dutchman-plugins-Windows-X64.tar.gz`,
   then run `.\dutchman-plugins.exe list` and `.\dutchman-plugins.exe --yes panel print`.
+  The packages are unsigned, so Windows may warn before the first run of each executable.
 
 The Print panel runs in the terminal; type `quit` to close it. Without a configured
 companion it shows a setup message. To try the complete panel with a simulated
