@@ -89,18 +89,6 @@ jobs:
       - name: Build components and enforce the 16 MiB cap
         if: matrix.check == 'components'
         run: ./scripts/build-plugins.sh
-      # Every push to main and pull request publishes the built plugins (each folder with its
-      # manifest and component), so nobody needs to build them locally to try a change.
-      - name: Upload built plugins
-        if: matrix.check == 'components'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: plugins
-          path: |
-            examples/*/plugin.json
-            examples/*/*.wasm
-          if-no-files-found: error
-          retention-days: 14
       - name: Build smoke test host
         if: matrix.check == 'components'
         run: cargo build --locked --release
@@ -110,6 +98,21 @@ jobs:
       - name: Build Print companion
         if: matrix.check == 'components'
         run: cargo build --manifest-path ../print/Cargo.toml --release --locked --bin dutchman-print
+      # Every push to main and pull request publishes the built plugins (each folder with its
+      # manifest and component), the host and the Print companion it was tested with, so
+      # nobody needs to build them locally to try a change.
+      - name: Upload built plugins
+        if: matrix.check == 'components'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plugins
+          path: |
+            examples/*/plugin.json
+            examples/*/*.wasm
+            ${{ env.CARGO_TARGET_DIR }}/release/dutchman-plugins
+            ${{ env.CARGO_TARGET_DIR }}/release/dutchman-print
+          if-no-files-found: error
+          retention-days: 14
       - name: Run Print companion smoke test
         if: matrix.check == 'components'
         run: python3 tests/print_e2e.py

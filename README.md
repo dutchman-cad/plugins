@@ -51,7 +51,8 @@ update its commit SHA and run CI. The checkout directories are `../dutchman-brid
 
 To try a change without building, download the `plugins` artifact from its CI run: every
 push to `main` and every pull request uploads each plugin folder's `plugin.json` and
-component, kept for 14 days (`gh run download <run-id> -R dutchman-cad/plugins -n plugins`).
+component, the Linux `dutchman-plugins` host and the `dutchman-print` companion it was tested
+with, kept for 14 days (`gh run download <run-id> -R dutchman-cad/plugins -n plugins`).
 
 Build through the `plugins` build queue. It selects the target directory and
 limits the job count. Set a writable scratch directory for temporary files:
