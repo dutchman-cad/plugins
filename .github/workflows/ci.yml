@@ -108,8 +108,8 @@ jobs:
         with:
           name: plugins
           path: |
-            examples/*/plugin.json
-            examples/*/*.wasm
+            plugins/examples/*/plugin.json
+            plugins/examples/*/*.wasm
             ${{ env.CARGO_TARGET_DIR }}/release/dutchman-plugins
             ${{ env.CARGO_TARGET_DIR }}/release/dutchman-print
           if-no-files-found: error
