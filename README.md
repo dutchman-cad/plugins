@@ -160,7 +160,9 @@ The panel offers printer choice, optional profile overrides, slicing estimates,
 Print, Pause, Resume, Stop, Cancel and Bed is clear. Machine buttons appear only for
 actions listed in the selected printer’s `controls`; an empty list shows a monitoring-only
 message, and older companions without `controls` keep the previous behavior.
-Printer rows show state, progress and time remaining. The toolbar widget uses the
+Printer rows show state, and progress and time remaining when the companion reports them.
+The slicing estimate reads as time, filament and layers, queue rows name printers rather
+than showing ids, and times in Recent prints are shown to the second in UTC. The toolbar widget uses the
 panel's status item. It refreshes every 5 seconds while a printer has a live job and
 every 30 seconds otherwise.
 A printer in `attention` (waiting for a person) or `busy` (a non-print operation is
@@ -169,7 +171,7 @@ Stop ends whatever job is live, including one started outside Print, and is the 
 action offered in attention. Cancel withdraws a prepared job that has not started.
 
 The panel opens with a Farm overview: a summary line (printer count, how many are
-printing, idle, need a bed check, or are offline or in error, and the queue length) and one
+printing, idle, need a bed check (every printer reporting `needs_clearing`, whatever its state), or are offline or in error, and the queue length) and one
 line per printer with its state, job name and progress while printing, "needs bed check"
 when the companion reports `needs_clearing`, and the queue entry proposed for it. Each line
 has a Select button that makes that printer the panel's selected printer. The overview only

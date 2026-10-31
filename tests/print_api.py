@@ -317,12 +317,15 @@ class PrintSmoke(unittest.TestCase):
         self.assertEqual(len(self.queue), 1)
         self.needs_clearing = False
         self.history = [dict(printer="bench", job_name=f"Part {n}", outcome="done",
-                             ended_at="2026-10-30T12:00:00Z", duration_seconds=120) for n in range(6)]
+                             ended_at="2026-10-30T12:00:00.740519658Z", duration_seconds=120) for n in range(6)]
+        self.history[0:0] = [dict(printer="bench", outcome="bed_clear", ended_at="2026-10-30T11:00:00.5Z")]
         run = self.run_host("panel", "print", input='{"id":"dispatch:entry/2"}\nquit\n')
-        for label in ("1. Selection", "target: any", "proposed printer: bench", "Recent prints",
-                      "Part 0", "Part 4", "done", "2026-10-30T12:00:00Z", "120 s"):
+        for label in ("1. Selection", "target: any", "proposed printer: Workbench", "Recent prints",
+                      "Part 0", "Part 3", "done", "2026-10-30 12:00:00 UTC", "120 s",
+                      "Bed check acknowledged — 2026-10-30 11:00:00 UTC"):
             self.assertIn(label, run.stdout)
-        self.assertNotIn("Part 5", run.stdout)
+        for label in ("Part 4", "740519658", "bed_clear", "Bed clearance"):
+            self.assertNotIn(label, run.stdout)
         self.assertFalse(any(r[2].endswith("/dispatch") for r in self.requests))
         self.assertFalse(any("plugin-confirmation" in r[3] for r in self.requests))
 
@@ -612,8 +615,10 @@ class PrintSmoke(unittest.TestCase):
     def test_panel_estimate_and_unconfirmed_button(self):
         self.needs_clearing = False
         run = self.run_host("panel", "print", input='{"id":"slice"}\n{"id":"print"}\nquit\n')
-        self.assertIn("Estimate:", run.stdout)
-        self.assertIn("120", run.stdout)
+        self.assertIn("Estimate: 2 min, 4.5 g of filament", run.stdout)
+        self.assertNotIn('"seconds"', run.stdout)
+        self.assertNotIn("?%", run.stdout)
+        self.assertNotIn("? s left", run.stdout)
         self.assertIn("confirmation", run.stdout + run.stderr)
         self.assertFalse(any(r[2].endswith("/start") for r in self.requests))
 
@@ -698,7 +703,7 @@ class PrintSmoke(unittest.TestCase):
         self.queue_command("slice")
         self.queue_command("queue-add", {"target": "any"})
         self.extra_printers = [
-            {"id": "ender", "name": "Ender", "state": "printing", "progress": 0.5, "job_name": "Bracket", "needs_clearing": False},
+            {"id": "ender", "name": "Ender", "state": "printing", "progress": 0.5, "job_name": "Bracket", "needs_clearing": True},
             {"id": "mini", "name": "Mini", "state": "idle", "needs_clearing": True},
             {"id": "gone", "name": "Gone", "state": "offline"},
             {"id": "bad", "name": "Bad", "state": "error"},
@@ -706,9 +711,9 @@ class PrintSmoke(unittest.TestCase):
         count = len(self.requests)
         run = self.run_host("panel", "print", input="quit\n")
         section = self.overview(run.stdout)
-        for text in ("5 printers: 1 printing, 1 idle, 1 need a bed check, 2 offline or error — queue length 1",
+        for text in ("5 printers: 1 printing, 1 idle, 2 need a bed check, 2 offline or error — queue length 1",
                      "Workbench — idle — proposed: queue #1 Selection",
-                     "Ender — printing — Bracket — 50%", "Mini — idle — needs bed check",
+                     "Ender — printing — Bracket — 50% — needs bed check", "Mini — idle — needs bed check",
                      "Gone — offline", "Bad — error"):
             self.assertIn(text, section)
         self.assertNotIn("Mini — idle — needs bed check — proposed", section)
