@@ -206,7 +206,9 @@ class PrintEndToEnd(unittest.TestCase):
         self.assertIsNotNone(execution)
         self.assertEqual(execution["outcome"], "stopped")
         panel = self.host("panel", "print", input="quit\n")
-        for value in ("Recent prints", execution["job_name"], execution["outcome"], execution["ended_at"],
+        # The panel shows times to the second in UTC: 2026-10-31T09:24:37.86Z -> 2026-10-31 09:24:37 UTC.
+        ended = execution["ended_at"][:19].replace("T", " ") + " UTC"
+        for value in ("Recent prints", execution["job_name"], execution["outcome"], ended,
                       f'{execution["duration_seconds"]} s'):
             self.assertIn(value, panel.stdout)
 
