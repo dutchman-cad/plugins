@@ -44,13 +44,29 @@ enum Command {
         plugin: PathBuf,
     },
 }
+/// Where example plugins live: DUTCHMAN_PLUGINS_EXAMPLES, then an `examples` folder beside the
+/// binary or two levels up (a `target/release` build), then the source tree it was built from.
+fn examples_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os("DUTCHMAN_PLUGINS_EXAMPLES") {
+        return dir.into();
+    }
+    let built = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples");
+    let Some(bin) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(PathBuf::from))
+    else {
+        return built;
+    };
+    [bin.join("examples"), bin.join("../../examples")]
+        .into_iter()
+        .find(|dir| dir.is_dir())
+        .unwrap_or(built)
+}
 fn folder(p: PathBuf) -> PathBuf {
     if p.is_dir() {
         p
     } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../examples")
-            .join(p)
+        examples_root().join(p)
     }
 }
 #[tokio::main]
@@ -82,7 +98,7 @@ async fn main() -> Result<()> {
     }
     match cli.command {
         Command::List => {
-            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples");
+            let root = examples_root();
             let mut extensions = std::collections::BTreeMap::new();
             for item in std::fs::read_dir(root)? {
                 let dir = item?.path();
