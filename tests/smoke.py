@@ -173,6 +173,7 @@ class Smoke(unittest.TestCase):
         self.assertIn("1 boxes", output)
         self.assertIn("[1] Size (id=size) = 12 mm", output)
         self.assertIn("[2] Make box (id=make-box) — button", output)
+        self.assertIn("Chose [2] Make box", output)
         self.assertNotIn("Item::", output)
 
 from print_api import PrintSmoke

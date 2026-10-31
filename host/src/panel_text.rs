@@ -326,10 +326,27 @@ pub fn action(items: &[Item], line: &str) -> Result<Action> {
     })
 }
 
+/// Names the control an action came from, so a number typed after a refresh shows what it hit.
+pub fn chosen(items: &[Item], id: &str) -> Option<String> {
+    let all = controls(items);
+    let index = all.iter().position(|c| c.id() == id)?;
+    Some(format!(
+        "Chose [{}] {}",
+        index + 1,
+        inline(all[index].label())
+    ))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn chosen_names_the_control_number_and_label() {
+        let items = [Item::Button(button())];
+        assert_eq!(chosen(&items, "go").as_deref(), Some("Chose [1] Go"));
+        assert_eq!(chosen(&items, "gone"), None);
+    }
     fn text(s: &str) -> Styled {
         Styled {
             text: s.into(),

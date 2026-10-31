@@ -1038,6 +1038,9 @@ impl Plugin {
             let result = async {
                 if !line.trim_start().starts_with('{') {
                     let action = crate::panel_text::action(&previous, &line)?;
+                    if let Some(chosen) = crate::panel_text::chosen(&previous, &action.id) {
+                        println!("{chosen}");
+                    }
                     return self
                         .panel_event(
                             panel_types::Event::Action(action),
