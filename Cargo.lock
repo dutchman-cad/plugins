@@ -929,8 +929,8 @@ dependencies = [
 
 [[package]]
 name = "dutchman-pilot"
-version = "0.1.0-beta.8"
-source = "git+https://github.com/dutchman-cad/pilot?rev=c496904e0a681aa19f84353f889f6aacaa594d86#c496904e0a681aa19f84353f889f6aacaa594d86"
+version = "0.1.0-beta.9"
+source = "git+https://github.com/dutchman-cad/pilot?rev=dbc61ed46947a467efadbd462e6c4ac99357c8d3#dbc61ed46947a467efadbd462e6c4ac99357c8d3"
 dependencies = [
  "serde",
  "serde_json",

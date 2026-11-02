@@ -37,7 +37,7 @@ unclear and what this host chose.
 Building from source requires sibling checkouts of [dutchman-bridge](https://github.com/dutchman-cad/bridge) and
 [dutchman](https://github.com/dutchman-cad/dutchman). Pilot's portable core comes from
 [dutchman-cad/pilot](https://github.com/dutchman-cad/pilot) at
-`c496904e0a681aa19f84353f889f6aacaa594d86` (v0.1.0-beta.8), for both the host and Pilot plugin. Rust must support Wasmtime 50
+`dbc61ed46947a467efadbd462e6c4ac99357c8d3` (v0.1.0-beta.9), for both the host and Pilot plugin. Rust must support Wasmtime 50
 and have the wasm32-wasip2 target installed.
 
 ## Sibling revisions
